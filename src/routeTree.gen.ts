@@ -15,6 +15,7 @@ import { Route as DeskCrewRouteImport } from './routes/_desk/crew'
 import { Route as DeskFinanceRouteImport } from './routes/_desk/finance'
 import { Route as DeskFleetRouteImport } from './routes/_desk/fleet'
 import { Route as DeskLoadsRouteImport } from './routes/_desk/loads'
+import { Route as DeskReportRouteImport } from './routes/_desk/report'
 import { Route as DeskRoadRouteImport } from './routes/_desk/road'
 import { Route as DeskYardsRouteImport } from './routes/_desk/yards'
 
@@ -47,6 +48,11 @@ const DeskLoadsRoute = DeskLoadsRouteImport.update({
   path: '/loads',
   getParentRoute: () => DeskRoute,
 } as any)
+const DeskReportRoute = DeskReportRouteImport.update({
+  id: '/report',
+  path: '/report',
+  getParentRoute: () => DeskRoute,
+} as any)
 const DeskRoadRoute = DeskRoadRouteImport.update({
   id: '/road',
   path: '/road',
@@ -64,6 +70,7 @@ export interface FileRoutesByFullPath {
   '/finance': typeof DeskFinanceRoute
   '/fleet': typeof DeskFleetRoute
   '/loads': typeof DeskLoadsRoute
+  '/report': typeof DeskReportRoute
   '/road': typeof DeskRoadRoute
   '/yards': typeof DeskYardsRoute
 }
@@ -72,6 +79,7 @@ export interface FileRoutesByTo {
   '/finance': typeof DeskFinanceRoute
   '/fleet': typeof DeskFleetRoute
   '/loads': typeof DeskLoadsRoute
+  '/report': typeof DeskReportRoute
   '/road': typeof DeskRoadRoute
   '/yards': typeof DeskYardsRoute
   '/': typeof DeskIndexRoute
@@ -83,6 +91,7 @@ export interface FileRoutesById {
   '/_desk/finance': typeof DeskFinanceRoute
   '/_desk/fleet': typeof DeskFleetRoute
   '/_desk/loads': typeof DeskLoadsRoute
+  '/_desk/report': typeof DeskReportRoute
   '/_desk/road': typeof DeskRoadRoute
   '/_desk/yards': typeof DeskYardsRoute
   '/_desk/': typeof DeskIndexRoute
@@ -90,9 +99,24 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/crew' | '/finance' | '/fleet' | '/loads' | '/road' | '/yards'
+    | '/'
+    | '/crew'
+    | '/finance'
+    | '/fleet'
+    | '/loads'
+    | '/report'
+    | '/road'
+    | '/yards'
   fileRoutesByTo: FileRoutesByTo
-  to: '/crew' | '/finance' | '/fleet' | '/loads' | '/road' | '/yards' | '/'
+  to:
+    | '/crew'
+    | '/finance'
+    | '/fleet'
+    | '/loads'
+    | '/report'
+    | '/road'
+    | '/yards'
+    | '/'
   id:
     | '__root__'
     | '/_desk'
@@ -100,6 +124,7 @@ export interface FileRouteTypes {
     | '/_desk/finance'
     | '/_desk/fleet'
     | '/_desk/loads'
+    | '/_desk/report'
     | '/_desk/road'
     | '/_desk/yards'
     | '/_desk/'
@@ -153,6 +178,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DeskLoadsRouteImport
       parentRoute: typeof DeskRoute
     }
+    '/_desk/report': {
+      id: '/_desk/report'
+      path: '/report'
+      fullPath: '/report'
+      preLoaderRoute: typeof DeskReportRouteImport
+      parentRoute: typeof DeskRoute
+    }
     '/_desk/road': {
       id: '/_desk/road'
       path: '/road'
@@ -175,6 +207,7 @@ interface DeskRouteChildren {
   DeskFinanceRoute: typeof DeskFinanceRoute
   DeskFleetRoute: typeof DeskFleetRoute
   DeskLoadsRoute: typeof DeskLoadsRoute
+  DeskReportRoute: typeof DeskReportRoute
   DeskRoadRoute: typeof DeskRoadRoute
   DeskYardsRoute: typeof DeskYardsRoute
   DeskIndexRoute: typeof DeskIndexRoute
@@ -185,6 +218,7 @@ const DeskRouteChildren: DeskRouteChildren = {
   DeskFinanceRoute: DeskFinanceRoute,
   DeskFleetRoute: DeskFleetRoute,
   DeskLoadsRoute: DeskLoadsRoute,
+  DeskReportRoute: DeskReportRoute,
   DeskRoadRoute: DeskRoadRoute,
   DeskYardsRoute: DeskYardsRoute,
   DeskIndexRoute: DeskIndexRoute,

@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
-import { CircleDollarSign, Map, Package, Pause, Play, Route, Truck, Users, Warehouse } from "lucide-react";
+import { CircleDollarSign, ClipboardList, Map, Package, Pause, Play, Route, Truck, Users, Warehouse } from "lucide-react";
 import { closureDate, EPOCH, money } from "@/game/sim";
 import { useDesk } from "@/game/store";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ const NAV = [
   { to: "/crew", label: "Staff", icon: Users },
   { to: "/yards", label: "Yards", icon: Warehouse },
   { to: "/finance", label: "Finance", icon: CircleDollarSign },
+  { to: "/report", label: "Report", icon: ClipboardList },
 ] as const;
 
 export function DeskShell() {

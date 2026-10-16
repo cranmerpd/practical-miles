@@ -80,6 +80,33 @@ export type MarketJob = {
   expiresAt: number;
 };
 
+export type DeliveryRecord = {
+  id: string;
+  shipmentId: string;
+  at: number | null;
+  fromZip: string;
+  toZip: string;
+  miles: number;
+  weight: number;
+  cube: number;
+  fragile: boolean;
+  cargoValue: number;
+  pay: number;
+  deposit: number;
+  payout: number | null;
+  lateCut: number;
+  damage: number;
+  late: boolean;
+  lateDays: number;
+  dueAt: number;
+  driver: string | null;
+  truck: Kind | null;
+  condition: number | null;
+  lateFee: boolean;
+  rep: number;
+  partial: boolean;
+};
+
 export type Shipment = {
   id: string;
   fromZip: string;
@@ -125,6 +152,7 @@ export type Company = {
   drivers: Driver[];
   applicants: Applicant[];
   shipments: Shipment[];
+  deliveries: DeliveryRecord[];
   payrollMark: string;
 };
 
@@ -385,6 +413,23 @@ export function dueDayLabel(simHours: number, dueAt: number, zip: string): strin
   return `Due in ${diff} days`;
 }
 
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+export function localDay(simHours: number, zip: string): { key: string; label: string; clock: string } {
+  const place = lookupZip(zip);
+  const off = place ? zoneOffset(place.state, place.lon, simHours) : -5;
+  const local = new Date(EPOCH + (simHours + off) * 3_600_000);
+  const hour = local.getUTCHours();
+  const minute = local.getUTCMinutes().toString().padStart(2, "0");
+  const h12 = ((hour + 11) % 12) + 1;
+  return {
+    key: `${local.getUTCFullYear()}-${local.getUTCMonth()}-${local.getUTCDate()}`,
+    label: `${WEEKDAYS[local.getUTCDay()]}, ${MONTHS[local.getUTCMonth()]} ${local.getUTCDate()}`,
+    clock: `${h12}:${minute} ${hour < 12 ? "am" : "pm"}`,
+  };
+}
+
 export function capacityOf(vehicle: Vehicle, vehicles: Vehicle[]): { payload: number; cube: number } {
   const info = KIND_INFO[vehicle.kind];
   if (vehicle.kind === "daycab" || vehicle.kind === "sleeper") {
@@ -489,6 +534,7 @@ export function warmWorld(world: World): void {
         headHome(world, company, vehicle);
       }
     }
+    backfillDeliveries(world);
   }
   if (world.jobs.length < 20) refillBoard(world, 28, 6);
   else if (world.company) refillBoard(world);
@@ -546,6 +592,7 @@ export function foundCompany(world: World, name: string, zip: string): string | 
     drivers: [],
     applicants: [],
     shipments: [],
+    deliveries: [],
     payrollMark: monthKey(world.simHours),
   };
   world.company = company;
@@ -1380,17 +1427,22 @@ export function resumeStored(world: World, shipmentId: string, vehicleId: string
 function finishDelivery(world: World, company: Company, shipment: Shipment, vehicle: Vehicle) {
   const lateHours = world.simHours - shipment.dueAt;
   let payout = shipment.pay - shipment.deposit;
-  if (lateHours > 0.05) {
+  let lateCut = 0;
+  let lateDays = 0;
+  const late = lateHours > 0.05;
+  let rep = 2;
+  if (late) {
     if (!shipment.lateNoted) {
       bumpRep(company, -6);
       shipment.lateNoted = true;
     }
+    rep = -6;
     log(world, `Late into ${labelPlace(shipment.toZip)}. Reputation drops once.`, "bad");
     if (shipment.lateFee) {
-      const days = Math.max(1, Math.ceil(lateHours / 24));
-      const cut = Math.min(payout, shipment.pay * 0.2 * days);
-      payout -= cut;
-      log(world, `Late fee ${money(cut)} on a marked load (${days} day${days === 1 ? "" : "s"}).`, "bad");
+      lateDays = Math.max(1, Math.ceil(lateHours / 24));
+      lateCut = Math.min(payout, shipment.pay * 0.2 * lateDays);
+      payout -= lateCut;
+      log(world, `Late fee ${money(lateCut)} on a marked load (${lateDays} day${lateDays === 1 ? "" : "s"}).`, "bad");
     }
   } else {
     bumpRep(company, 2);
@@ -1402,13 +1454,42 @@ function finishDelivery(world: World, company: Company, shipment: Shipment, vehi
   if (fragile) chance *= 4;
   chance = Math.max(0.002, Math.min(0.4, chance));
   const roll = hash(`${shipment.id}:dmg`);
+  let damage = 0;
   if (roll < chance) {
-    const bill = Math.round(shipment.cargoValue * (fragile ? 0.8 : 0.5));
+    damage = Math.round(shipment.cargoValue * (fragile ? 0.8 : 0.5));
+    rep += fragile ? -20 : -12;
     bumpRep(company, fragile ? -20 : -12);
-    pushCash(world, company, -bill, `Damage claim ${money(bill)} on ${fragile ? "fragile " : ""}freight worth ${money(shipment.cargoValue)}.`, "bad");
+    pushCash(world, company, -damage, `Damage claim ${money(damage)} on ${fragile ? "fragile " : ""}freight worth ${money(shipment.cargoValue)}.`, "bad");
   }
   if (payout > 0) pushCash(world, company, payout, `Delivery paid ${money(payout)}.`, "good");
   else log(world, "Delivery finished with nothing left of the balance.", "bad");
+  const miles = vehicle.routeMiles > 1 ? vehicle.routeMiles : (planRoad(shipment.fromZip, shipment.toZip)?.miles ?? 0);
+  noteDelivery(world, company, {
+    id: uid(world, "drop"),
+    shipmentId: shipment.id,
+    at: world.simHours,
+    fromZip: shipment.fromZip,
+    toZip: shipment.toZip,
+    miles,
+    weight: shipment.weight,
+    cube: shipment.cube,
+    fragile: shipment.fragile,
+    cargoValue: shipment.cargoValue,
+    pay: shipment.pay,
+    deposit: shipment.deposit,
+    payout,
+    lateCut,
+    damage,
+    late,
+    lateDays,
+    dueAt: shipment.dueAt,
+    driver: driver?.name ?? null,
+    truck: vehicle.kind,
+    condition: vehicle.condition,
+    lateFee: shipment.lateFee,
+    rep,
+    partial: false,
+  });
   shipment.status = "done";
   shipment.vehicleId = undefined;
   if (vehicle.shipmentId === shipment.id) {
@@ -1420,6 +1501,96 @@ function finishDelivery(world: World, company: Company, shipment: Shipment, vehi
     const drop = new Set(done.slice(0, done.length - 8).map((item) => item.id));
     company.shipments = company.shipments.filter((item) => !drop.has(item.id));
   }
+}
+
+function noteDelivery(world: World, company: Company, record: DeliveryRecord) {
+  if (!company.deliveries) company.deliveries = [];
+  if (company.deliveries.some((item) => item.shipmentId === record.shipmentId)) return;
+  company.deliveries.push(record);
+  if (company.deliveries.length > 500) company.deliveries.splice(0, company.deliveries.length - 500);
+}
+
+function backfillDeliveries(world: World) {
+  const company = world.company;
+  if (!company) return;
+  if (!company.deliveries) company.deliveries = [];
+  const missing = company.shipments.filter(
+    (shipment) => shipment.status === "done" && !company.deliveries.some((item) => item.shipmentId === shipment.id),
+  );
+  const paid = world.log.filter((line) => line.text.startsWith("Delivery paid "));
+  const fees = world.log.filter((line) => line.text.startsWith("Late fee "));
+  const claims = world.log.filter((line) => line.text.startsWith("Damage claim "));
+  const recover = missing.length === 1 && paid.length === 1 ? paid[0] : null;
+  for (const shipment of missing) {
+    const miles = planRoad(shipment.fromZip, shipment.toZip)?.miles ?? 0;
+    if (recover && shipment.id === missing[0].id) {
+      const at = recover.at;
+      const lateHours = at - shipment.dueAt;
+      const late = lateHours > 0.05 || shipment.lateNoted;
+      const lateCut = fees.length === 1 ? (dollars(fees[0].text) ?? 0) : 0;
+      const damage = claims.length === 1 ? (dollars(claims[0].text) ?? 0) : 0;
+      const lateDays = late && shipment.lateFee ? Math.max(1, Math.ceil(Math.max(0, lateHours) / 24)) : 0;
+      noteDelivery(world, company, {
+        id: uid(world, "drop"),
+        shipmentId: shipment.id,
+        at,
+        fromZip: shipment.fromZip,
+        toZip: shipment.toZip,
+        miles,
+        weight: shipment.weight,
+        cube: shipment.cube,
+        fragile: shipment.fragile,
+        cargoValue: shipment.cargoValue,
+        pay: shipment.pay,
+        deposit: shipment.deposit,
+        payout: dollars(recover.text),
+        lateCut,
+        damage,
+        late,
+        lateDays,
+        dueAt: shipment.dueAt,
+        driver: null,
+        truck: null,
+        condition: null,
+        lateFee: shipment.lateFee,
+        rep: (late ? -6 : 2) + (damage > 0 ? (shipment.fragile ? -20 : -12) : 0),
+        partial: false,
+      });
+      continue;
+    }
+    noteDelivery(world, company, {
+      id: uid(world, "drop"),
+      shipmentId: shipment.id,
+      at: null,
+      fromZip: shipment.fromZip,
+      toZip: shipment.toZip,
+      miles,
+      weight: shipment.weight,
+      cube: shipment.cube,
+      fragile: shipment.fragile,
+      cargoValue: shipment.cargoValue,
+      pay: shipment.pay,
+      deposit: shipment.deposit,
+      payout: null,
+      lateCut: 0,
+      damage: 0,
+      late: shipment.lateNoted,
+      lateDays: 0,
+      dueAt: shipment.dueAt,
+      driver: null,
+      truck: null,
+      condition: null,
+      lateFee: shipment.lateFee,
+      rep: 0,
+      partial: true,
+    });
+  }
+}
+
+function dollars(text: string): number | null {
+  const match = text.match(/\$([0-9,]+)/);
+  if (!match) return null;
+  return Number(match[1].replaceAll(",", ""));
 }
 
 function arrive(world: World, company: Company, vehicle: Vehicle) {

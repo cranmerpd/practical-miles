@@ -73,73 +73,56 @@ function OpenScreen() {
   const roads = world.jobs.filter((job) => job.mode === "road").length;
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-4 py-8 lg:py-12">
-      <p className="text-[10px] font-medium uppercase tracking-[0.28em] text-pine">A freight company, on your desk</p>
-      <h1 className="mt-2 font-display text-6xl uppercase leading-[0.85] tracking-tight sm:text-8xl">Practical Miles</h1>
-      <p className="mt-4 max-w-2xl text-lg text-ink/80">
-        Buy a used truck, hire a driver, and move real ZIP-to-ZIP freight. The highways are the US map. The clock runs while this page is open.
+    <main className="mx-auto w-full max-w-6xl px-4 py-10 lg:py-16">
+      <p className="text-[10px] font-medium uppercase tracking-[0.28em] text-pine">Practical Miles</p>
+      <h1 className="mt-3 max-w-4xl font-display text-6xl uppercase leading-[0.85] tracking-tight sm:text-8xl">The miles are the business.</h1>
+      <p className="mt-5 max-w-xl text-xl text-ink/80">
+        One warehouse. A used truck. A driver who can only stay out so long. Freight on the real map of the United States, and a clock that does not wait.
       </p>
-      <p className="mt-3 text-sm tabular-nums text-ink/50">
-        {whenLabel(world.simHours)} · diesel ${world.diesel.toFixed(2)}/gal · {roads === 0 ? "the board is filling in" : `${roads} road loads posted`}
+      <p className="mt-4 text-sm tabular-nums text-ink/45">
+        {roads === 0 ? "Loads are posting now." : `${roads} loads are already on the board.`} Diesel is ${world.diesel.toFixed(2)} a gallon. {whenLabel(world.simHours)}.
       </p>
-      <div className="mt-8 grid items-start gap-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-        <div className="space-y-4">
-          <dl className="grid grid-cols-3 border border-ink/15">
-            <OpenFact label="Cash" value="$25,000" />
-            <OpenFact label="Reputation" value="35" />
-            <OpenFact label="Yard" value="1 small" />
-          </dl>
-          <form
-            className="space-y-3 border border-ink/15 bg-sheet p-4"
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (!zip) {
-                setNote("Pick a real ZIP code.");
-                return;
-              }
-              setNote(found(name, zip));
-            }}
-          >
-            <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-pine">Open a company</p>
-            <label className="block space-y-1 text-sm font-medium">
-              <span className="text-xs uppercase tracking-widest text-ink/55">Company name</span>
-              <Input value={name} autoComplete="off" onChange={(event) => setName(event.target.value)} />
-            </label>
-            <PlaceSearch label="Where is the warehouse?" onPick={setZip} />
-            <Button type="submit" disabled={!name.trim() || !zip}>
-              Open the company
-            </Button>
-            <p className="text-sm text-ink/50">A real US city or ZIP. The first building opens there. Planes and ships are on the board. They are not yours yet.</p>
-            <Notice text={note} />
-          </form>
-          <ul className="grid gap-px bg-ink/15 sm:grid-cols-2">
-            <OpenStep title="Loads" text="Book a short run, or bring freight home and deliver it later." />
-            <OpenStep title="Yards" text="Put more than one load on a truck and send the loop out." />
-            <OpenStep title="Road" text="Miles left, the dock, and whether fuel eats the pay." />
-            <OpenStep title="Staff" text="Hours left on the clock. A 10-hour break happens at the warehouse." />
-          </ul>
-          <p className="text-sm text-ink/45">Early build. The company stays in this browser. A different phone or a private window starts a new one.</p>
-        </div>
+      <div className="mt-10 grid items-start gap-8 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+        <form
+          className="space-y-3 border border-ink/15 bg-sheet p-5"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!zip) {
+              setNote("Pick a real ZIP code.");
+              return;
+            }
+            setNote(found(name, zip));
+          }}
+        >
+          <p className="font-display text-3xl uppercase leading-none tracking-tight">Put your name on the door.</p>
+          <p className="text-sm text-ink/60">$25,000. Reputation 35. A small building in whatever city you choose.</p>
+          <label className="block space-y-1 text-sm font-medium">
+            <span className="text-xs uppercase tracking-widest text-ink/55">Company name</span>
+            <Input value={name} autoComplete="off" onChange={(event) => setName(event.target.value)} />
+          </label>
+          <PlaceSearch label="Where is the warehouse?" onPick={setZip} />
+          <Button type="submit" disabled={!name.trim() || !zip}>
+            Open the company
+          </Button>
+          <Notice text={note} />
+        </form>
         <MapBoard route={null} />
       </div>
+      <ul className="mt-10 grid gap-px bg-ink/15 sm:grid-cols-3">
+        <OpenPromise title="Real roads" text="Every city is a real ZIP. The miles are the miles." />
+        <OpenPromise title="Thin margins" text="A good rate can still lose money once the fuel is burned." />
+        <OpenPromise title="A full truck" text="One van can carry more than one load. Then it has to come home." />
+      </ul>
+      <p className="mt-4 text-sm text-ink/35">Nothing to install. It opens in this browser.</p>
     </main>
   );
 }
 
-function OpenFact({ label, value }: { label: string; value: string }) {
+function OpenPromise({ title, text }: { title: string; text: string }) {
   return (
-    <div className="border-ink/15 px-3 py-3 sm:border-l sm:first:border-l-0">
-      <dt className="text-[10px] uppercase tracking-[0.18em] text-ink/45">{label}</dt>
-      <dd className="mt-1 font-display text-2xl leading-none tabular-nums sm:text-3xl">{value}</dd>
-    </div>
-  );
-}
-
-function OpenStep({ title, text }: { title: string; text: string }) {
-  return (
-    <li className="bg-paper px-3 py-3">
-      <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-pine">{title}</p>
-      <p className="mt-1 text-sm text-ink/70">{text}</p>
+    <li className="bg-paper px-4 py-4">
+      <p className="font-display text-2xl uppercase leading-none tracking-tight">{title}</p>
+      <p className="mt-2 text-sm text-ink/60">{text}</p>
     </li>
   );
 }

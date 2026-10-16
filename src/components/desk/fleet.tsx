@@ -1,12 +1,11 @@
 import { useMemo, useState } from "react";
-import { Link } from "@tanstack/react-router";
 import { labelPlace, planRoad } from "@/game/geo";
-import { isCommitted, isTractor, KIND_INFO, money, type Listing, type Vehicle } from "@/game/sim";
+import { dueDayLabel, isCommitted, isTractor, KIND_INFO, money, type Listing, type Vehicle } from "@/game/sim";
 import { useDesk } from "@/game/store";
 import { Button } from "@/components/ui/button";
 import { Field, Select } from "@/components/ui/input";
 import { Notice, Panel, PlaceSearch, pounds, cubes, useWorld } from "@/components/desk/bits";
-import { onTheRoad } from "@/components/desk/trip";
+import { onTheRoad, readTrip, resale } from "@/components/desk/trip";
 
 function sellOffer(vehicle: Vehicle): number {
   return Math.round(
@@ -16,37 +15,65 @@ function sellOffer(vehicle: Vehicle): number {
 
 export function Fleet() {
   const { world, company } = useWorld();
+  const [buying, setBuying] = useState(false);
   if (!company) return null;
+  const trucks = company.vehicles.filter((vehicle) => vehicle.kind !== "trailer53");
+  const trailers = company.vehicles.length - trucks.length;
+  const out = company.vehicles.filter((vehicle) => onTheRoad(vehicle));
+  const fuelGallons = trucks.reduce((sum, vehicle) => sum + Math.max(0, vehicle.fuel), 0);
+  const worth = company.vehicles.reduce((sum, vehicle) => sum + resale(vehicle), 0);
+  const condition = trucks.length ? trucks.reduce((sum, vehicle) => sum + vehicle.condition, 0) / trucks.length : 0;
+
   return (
     <div className="space-y-4">
-      <Panel title="Your equipment">
+      <Panel title="The fleet">
         {company.vehicles.length === 0 ? (
           <p className="text-sm text-ink/70">No trucks yet. A used cargo van is the usual first buy. The seller drives it to a warehouse you pick. That delivery fee is not your fuel.</p>
         ) : (
+          <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+            <Stat label="Power units" value={String(trucks.length)} />
+            <Stat label="Trailers" value={String(trailers)} />
+            <Stat label="Out" value={String(out.length)} />
+            <Stat label="Parked" value={String(company.vehicles.length - out.length)} />
+            <Stat label="Average condition" value={trucks.length ? String(Math.round(condition)) : "—"} />
+            <Stat label="Fuel in the tanks" value={`${Math.round(fuelGallons).toLocaleString("en-US")} gal`} />
+            <Stat label="Sell today" value={money(worth)} />
+          </dl>
+        )}
+        <div className="mt-3">
+          <Button variant={buying ? "quiet" : "primary"} onClick={() => setBuying((value) => !value)}>
+            {buying ? "Hide the lot" : "Purchase more vehicles"}
+          </Button>
+        </div>
+      </Panel>
+      {company.vehicles.length > 0 ? (
+        <Panel title="Equipment">
           <ul className="space-y-4">
             {company.vehicles.map((vehicle) => (
               <Owned key={vehicle.id} vehicle={vehicle} />
             ))}
           </ul>
-        )}
-      </Panel>
-      <Panel title="For sale" extra={<span className="text-sm text-ink/60">{world.listings.length} listed</span>}>
-        {world.listings.length === 0 ? (
-          <p className="text-sm text-ink/70">Sellers are still posting trucks.</p>
-        ) : (
-          <ul className="space-y-4">
-            {world.listings.map((listing) => (
-              <Lot key={listing.id} listing={listing} />
-            ))}
-          </ul>
-        )}
-      </Panel>
+        </Panel>
+      ) : null}
+      {buying || company.vehicles.length === 0 ? (
+        <Panel title="For sale" extra={<span className="text-sm text-ink/60">{world.listings.length} listed</span>}>
+          {world.listings.length === 0 ? (
+            <p className="text-sm text-ink/70">Sellers are still posting trucks.</p>
+          ) : (
+            <ul className="space-y-4">
+              {world.listings.map((listing) => (
+                <Lot key={listing.id} listing={listing} />
+              ))}
+            </ul>
+          )}
+        </Panel>
+      ) : null}
     </div>
   );
 }
 
 function Owned({ vehicle }: { vehicle: Vehicle }) {
-  const { company } = useWorld();
+  const { world, company } = useWorld();
   const sellTruck = useDesk((s) => s.sellTruck);
   const repair = useDesk((s) => s.repair);
   const sendTruck = useDesk((s) => s.sendTruck);
@@ -62,33 +89,49 @@ function Owned({ vehicle }: { vehicle: Vehicle }) {
   const repairCost = Math.round(((100 - vehicle.condition) / 100) * 0.1 * vehicle.price);
   const drivers = company.drivers.filter((item) => !item.vehicleId && item.warehouseId && company.warehouses.some((yard) => yard.id === item.warehouseId && yard.zip === vehicle.zip));
   const eligible = drivers.filter((item) => !spec.cdl || item.cdl);
+  const trip = readTrip(world, company, vehicle);
+  const legLeft = Math.max(0, vehicle.routeMiles - vehicle.traveled);
+  const dest = vehicle.legs[0]?.toZip ?? vehicle.zip;
 
   return (
     <li className="space-y-2 border-b border-ink/10 pb-4 last:border-0 last:pb-0">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <p className="font-medium">{spec.label}</p>
         <p className="text-sm tabular-nums text-ink/70">
-          {vehicle.status === "inbound" ? "Seller is delivering it" : onTheRoad(vehicle) ? "Out" : "Parked"} · {labelPlace(vehicle.zip)}
+          {vehicle.status === "inbound" ? "Seller is delivering it" : trip ? trip.leg : "Parked"} · {labelPlace(vehicle.zip)}
         </p>
       </div>
       <p className="text-sm text-ink/70">
-        Condition {Math.round(vehicle.condition)} · {Math.round(vehicle.mileage).toLocaleString("en-US")} mi
+        {Math.round(vehicle.mileage).toLocaleString("en-US")} mi on the odometer
         {spec.tank > 0 ? ` · fuel ${Math.round(vehicle.fuel)}/${spec.tank} gal` : ""}
         {driver ? ` · ${driver.name}` : ""}
         {spec.payload ? ` · holds ${pounds(spec.payload)}, ${cubes(spec.cube)}` : ""}
         {isTractor(vehicle.kind) ? " · needs a trailer and a CDL" : ""}
       </p>
-      {onTheRoad(vehicle) ? (
-        <p className="text-sm text-ink/70">
-          <Link to="/road" className="underline">
-            Open Road
-          </Link>{" "}
-          for miles left, and whether fuel eats the pay.
-        </p>
-      ) : null}
-      <div className="h-1 bg-ink/10">
-        <div className="h-1 bg-pine" style={{ width: `${Math.max(0, Math.min(100, vehicle.condition))}%` }} />
-      </div>
+      <Meter label="Condition" used={vehicle.condition} cap={100} />
+      {trip ? (
+        <div className="space-y-2 border border-ink/10 p-3 text-sm">
+          <p>
+            Toward {trip.heading}. {Math.max(1, Math.round(trip.milesLeft)).toLocaleString("en-US")} miles left on the whole trip.
+            {trip.stopsLeft > 1 ? ` ${trip.stopsLeft} deliveries still aboard.` : ""}
+          </p>
+          {vehicle.routeMiles > 0 ? <Meter label="This leg" used={vehicle.traveled} cap={vehicle.routeMiles} /> : null}
+          <p className="text-ink/70">
+            {legLeft > 0 ? `${Math.round(legLeft).toLocaleString("en-US")} miles left on this leg. ` : ""}
+            Driven {vehicle.driveToday.toFixed(1)} of 11 hours today.
+          </p>
+          {trip.pay > 0 ? (
+            <p className={trip.afterFuel < 0 ? "text-rust" : "text-pine"}>
+              Still owed {money(trip.balance)}. Fuel still to burn {money(trip.burn)}. After that fuel, {money(trip.afterFuel)}.
+            </p>
+          ) : (
+            <p>No customer is paying for this move. Fuel still to burn is about {money(trip.burn)}.</p>
+          )}
+          {trip.dueAt != null ? <p className="text-ink/70">{dueDayLabel(world.simHours, trip.dueAt, dest)}.</p> : null}
+        </div>
+      ) : (
+        <p className="text-sm text-ink/60">{atYard ? "Parked at your warehouse." : `Parked in ${labelPlace(vehicle.zip)}.`}</p>
+      )}
       {idle && atYard ? (
         <div className="flex flex-wrap gap-2">
           {vehicle.condition < 99 ? (
@@ -136,6 +179,30 @@ function Owned({ vehicle }: { vehicle: Vehicle }) {
       ) : null}
       <Notice text={note} />
     </li>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="text-xs uppercase tracking-widest text-ink/45">{label}</dt>
+      <dd className="mt-1 text-lg font-semibold tabular-nums">{value}</dd>
+    </div>
+  );
+}
+
+function Meter({ label, used, cap }: { label: string; used: number; cap: number }) {
+  const pct = cap > 0 ? Math.max(0, Math.min(100, (used / cap) * 100)) : 0;
+  return (
+    <div>
+      <div className="mb-1 flex justify-between text-xs uppercase tracking-widest text-ink/45">
+        <span>{label}</span>
+        <span className="tabular-nums">{Math.round(pct)}%</span>
+      </div>
+      <div className="h-1 bg-ink/10">
+        <div className="h-1 bg-ink" style={{ width: `${pct}%` }} />
+      </div>
+    </div>
   );
 }
 

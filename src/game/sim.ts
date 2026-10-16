@@ -403,29 +403,29 @@ export function dueDayLabel(simHours: number, dueAt: number, zip: string): strin
   const nowOff = place ? zoneOffset(place.state, place.lon, simHours) : -5;
   const dueOff = place ? zoneOffset(place.state, place.lon, dueAt) : -5;
   const diff = Math.floor((dueAt + 12 + dueOff) / 24) - Math.floor((simHours + 12 + nowOff) / 24);
-  if (diff < 0) return diff === -1 ? "1 day late" : `${-diff} days late`;
-  if (diff === 0) return "Due today";
-  if (diff === 1) return "Due tomorrow";
-  if (diff < 7) {
-    const local = new Date(EPOCH + dueAt * 3_600_000 + dueOff * 3_600_000);
-    return `Due ${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][local.getUTCDay()]}`;
-  }
-  return `Due in ${diff} days`;
+  if (diff < 0) return diff === -1 ? `1 day late · ${localDay(dueAt, zip).short}` : `${-diff} days late · ${localDay(dueAt, zip).short}`;
+  const when = localDay(dueAt, zip).short;
+  if (diff === 0) return `Due today, ${when}`;
+  if (diff === 1) return `Due tomorrow, ${when}`;
+  return `Due ${when}`;
 }
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
-export function localDay(simHours: number, zip: string): { key: string; label: string; clock: string } {
+export function localDay(simHours: number, zip: string): { key: string; label: string; short: string; clock: string } {
   const place = lookupZip(zip);
   const off = place ? zoneOffset(place.state, place.lon, simHours) : -5;
   const local = new Date(EPOCH + (simHours + off) * 3_600_000);
   const hour = local.getUTCHours();
   const minute = local.getUTCMinutes().toString().padStart(2, "0");
   const h12 = ((hour + 11) % 12) + 1;
+  const shortDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const shortMonths = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   return {
     key: `${local.getUTCFullYear()}-${local.getUTCMonth()}-${local.getUTCDate()}`,
     label: `${WEEKDAYS[local.getUTCDay()]}, ${MONTHS[local.getUTCMonth()]} ${local.getUTCDate()}`,
+    short: `${shortDays[local.getUTCDay()]}, ${shortMonths[local.getUTCMonth()]} ${local.getUTCDate()}`,
     clock: `${h12}:${minute} ${hour < 12 ? "am" : "pm"}`,
   };
 }

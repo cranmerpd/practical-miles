@@ -1,0 +1,1 @@
+import{t as e}from"./desk-Dhb2cfr8.js";var t=e;export{t as component};

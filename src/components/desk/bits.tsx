@@ -40,7 +40,9 @@ export function Notice({ text }: { text: string | null }) {
 }
 
 export function whenLabel(hours: number): string {
-  return `${formatWhen(hours)}, ${gameDate(hours).getUTCFullYear()}`;
+  const date = gameDate(hours);
+  const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  return `${days[date.getUTCDay()]}, ${formatWhen(hours)}, ${date.getUTCFullYear()}`;
 }
 
 export function hoursLeft(h: number): string {

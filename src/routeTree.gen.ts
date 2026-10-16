@@ -12,8 +12,10 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as DeskRouteImport } from './routes/_desk'
 import { Route as DeskIndexRouteImport } from './routes/_desk/index'
 import { Route as DeskCrewRouteImport } from './routes/_desk/crew'
+import { Route as DeskFinanceRouteImport } from './routes/_desk/finance'
 import { Route as DeskFleetRouteImport } from './routes/_desk/fleet'
 import { Route as DeskLoadsRouteImport } from './routes/_desk/loads'
+import { Route as DeskRoadRouteImport } from './routes/_desk/road'
 import { Route as DeskYardsRouteImport } from './routes/_desk/yards'
 
 const DeskRoute = DeskRouteImport.update({
@@ -30,6 +32,11 @@ const DeskCrewRoute = DeskCrewRouteImport.update({
   path: '/crew',
   getParentRoute: () => DeskRoute,
 } as any)
+const DeskFinanceRoute = DeskFinanceRouteImport.update({
+  id: '/finance',
+  path: '/finance',
+  getParentRoute: () => DeskRoute,
+} as any)
 const DeskFleetRoute = DeskFleetRouteImport.update({
   id: '/fleet',
   path: '/fleet',
@@ -38,6 +45,11 @@ const DeskFleetRoute = DeskFleetRouteImport.update({
 const DeskLoadsRoute = DeskLoadsRouteImport.update({
   id: '/loads',
   path: '/loads',
+  getParentRoute: () => DeskRoute,
+} as any)
+const DeskRoadRoute = DeskRoadRouteImport.update({
+  id: '/road',
+  path: '/road',
   getParentRoute: () => DeskRoute,
 } as any)
 const DeskYardsRoute = DeskYardsRouteImport.update({
@@ -49,14 +61,18 @@ const DeskYardsRoute = DeskYardsRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof DeskIndexRoute
   '/crew': typeof DeskCrewRoute
+  '/finance': typeof DeskFinanceRoute
   '/fleet': typeof DeskFleetRoute
   '/loads': typeof DeskLoadsRoute
+  '/road': typeof DeskRoadRoute
   '/yards': typeof DeskYardsRoute
 }
 export interface FileRoutesByTo {
   '/crew': typeof DeskCrewRoute
+  '/finance': typeof DeskFinanceRoute
   '/fleet': typeof DeskFleetRoute
   '/loads': typeof DeskLoadsRoute
+  '/road': typeof DeskRoadRoute
   '/yards': typeof DeskYardsRoute
   '/': typeof DeskIndexRoute
 }
@@ -64,22 +80,27 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_desk': typeof DeskRouteWithChildren
   '/_desk/crew': typeof DeskCrewRoute
+  '/_desk/finance': typeof DeskFinanceRoute
   '/_desk/fleet': typeof DeskFleetRoute
   '/_desk/loads': typeof DeskLoadsRoute
+  '/_desk/road': typeof DeskRoadRoute
   '/_desk/yards': typeof DeskYardsRoute
   '/_desk/': typeof DeskIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/crew' | '/fleet' | '/loads' | '/yards'
+  fullPaths:
+    '/' | '/crew' | '/finance' | '/fleet' | '/loads' | '/road' | '/yards'
   fileRoutesByTo: FileRoutesByTo
-  to: '/crew' | '/fleet' | '/loads' | '/yards' | '/'
+  to: '/crew' | '/finance' | '/fleet' | '/loads' | '/road' | '/yards' | '/'
   id:
     | '__root__'
     | '/_desk'
     | '/_desk/crew'
+    | '/_desk/finance'
     | '/_desk/fleet'
     | '/_desk/loads'
+    | '/_desk/road'
     | '/_desk/yards'
     | '/_desk/'
   fileRoutesById: FileRoutesById
@@ -111,6 +132,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DeskCrewRouteImport
       parentRoute: typeof DeskRoute
     }
+    '/_desk/finance': {
+      id: '/_desk/finance'
+      path: '/finance'
+      fullPath: '/finance'
+      preLoaderRoute: typeof DeskFinanceRouteImport
+      parentRoute: typeof DeskRoute
+    }
     '/_desk/fleet': {
       id: '/_desk/fleet'
       path: '/fleet'
@@ -125,6 +153,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DeskLoadsRouteImport
       parentRoute: typeof DeskRoute
     }
+    '/_desk/road': {
+      id: '/_desk/road'
+      path: '/road'
+      fullPath: '/road'
+      preLoaderRoute: typeof DeskRoadRouteImport
+      parentRoute: typeof DeskRoute
+    }
     '/_desk/yards': {
       id: '/_desk/yards'
       path: '/yards'
@@ -137,16 +172,20 @@ declare module '@tanstack/react-router' {
 
 interface DeskRouteChildren {
   DeskCrewRoute: typeof DeskCrewRoute
+  DeskFinanceRoute: typeof DeskFinanceRoute
   DeskFleetRoute: typeof DeskFleetRoute
   DeskLoadsRoute: typeof DeskLoadsRoute
+  DeskRoadRoute: typeof DeskRoadRoute
   DeskYardsRoute: typeof DeskYardsRoute
   DeskIndexRoute: typeof DeskIndexRoute
 }
 
 const DeskRouteChildren: DeskRouteChildren = {
   DeskCrewRoute: DeskCrewRoute,
+  DeskFinanceRoute: DeskFinanceRoute,
   DeskFleetRoute: DeskFleetRoute,
   DeskLoadsRoute: DeskLoadsRoute,
+  DeskRoadRoute: DeskRoadRoute,
   DeskYardsRoute: DeskYardsRoute,
   DeskIndexRoute: DeskIndexRoute,
 }

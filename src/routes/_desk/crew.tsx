@@ -10,7 +10,7 @@ export const Route = createFileRoute("/_desk/crew")({
 function CrewPage() {
   return (
     <Frame>
-      <PageTitle kicker="People" title="Crew" />
+      <PageTitle kicker="People" title="Staff" />
       <Crew />
     </Frame>
   );

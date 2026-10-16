@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
-import { Map, Package, Pause, Play, Truck, Users, Warehouse } from "lucide-react";
+import { CircleDollarSign, Map, Package, Pause, Play, Route, Truck, Users, Warehouse } from "lucide-react";
 import { closureDate, EPOCH, money } from "@/game/sim";
 import { useDesk } from "@/game/store";
 import { Button } from "@/components/ui/button";
@@ -11,9 +11,11 @@ import { MapBoard } from "@/components/desk/map-board";
 const NAV = [
   { to: "/", label: "Map", icon: Map },
   { to: "/loads", label: "Loads", icon: Package },
+  { to: "/road", label: "Road", icon: Route },
   { to: "/fleet", label: "Fleet", icon: Truck },
-  { to: "/crew", label: "Crew", icon: Users },
+  { to: "/crew", label: "Staff", icon: Users },
   { to: "/yards", label: "Yards", icon: Warehouse },
+  { to: "/finance", label: "Finance", icon: CircleDollarSign },
 ] as const;
 
 export function DeskShell() {
@@ -180,7 +182,7 @@ function LiveChrome() {
           <Stat label="Reputation" value={String(company.rep)} />
           <Stat label="Diesel" value={`$${world.diesel.toFixed(2)}`} />
         </dl>
-        <nav className="mx-auto hidden max-w-6xl gap-1 px-4 py-2 md:flex" aria-label="Company">
+        <nav className="mx-auto hidden max-w-6xl gap-1 overflow-x-auto px-4 py-2 md:flex" aria-label="Company">
           {NAV.map((item) => (
             <NavLink key={item.to} to={item.to} label={item.label} active={isActive(path, item.to)} />
           ))}
@@ -213,7 +215,7 @@ function LiveChrome() {
         <Outlet />
       </main>
       <nav className="nav-safe fixed inset-x-0 bottom-0 z-30 border-t border-ink/15 bg-paper md:hidden" aria-label="Company">
-        <div className="grid grid-cols-5">
+        <div className="nav-scroll flex overflow-x-auto">
           {NAV.map((item) => {
             const Icon = item.icon;
             const active = isActive(path, item.to);
@@ -221,7 +223,7 @@ function LiveChrome() {
               <Link
                 key={item.to}
                 to={item.to}
-                className={`flex min-h-14 flex-col items-center justify-center gap-0.5 text-xs font-medium uppercase tracking-wide ${active ? "text-ink" : "text-ink/45"}`}
+                className={`flex min-h-14 min-w-[4.6rem] shrink-0 flex-col items-center justify-center gap-0.5 px-1 text-xs font-medium uppercase tracking-wide ${active ? "text-ink" : "text-ink/45"}`}
               >
                 <Icon className="size-5" aria-hidden />
                 {item.label}

@@ -1,10 +1,12 @@
 import { useMemo, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { labelPlace, planRoad } from "@/game/geo";
 import { isTractor, KIND_INFO, money, type Listing, type Vehicle } from "@/game/sim";
 import { useDesk } from "@/game/store";
 import { Button } from "@/components/ui/button";
 import { Field, Select } from "@/components/ui/input";
 import { Notice, Panel, PlaceSearch, pounds, cubes, useWorld } from "@/components/desk/bits";
+import { onTheRoad } from "@/components/desk/trip";
 
 function sellOffer(vehicle: Vehicle): number {
   return Math.round(
@@ -66,7 +68,7 @@ function Owned({ vehicle }: { vehicle: Vehicle }) {
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <p className="font-medium">{spec.label}</p>
         <p className="text-sm tabular-nums text-ink/70">
-          {vehicle.status === "inbound" ? "Seller is delivering it" : vehicle.status === "enroute" ? "Out" : "Parked"} · {labelPlace(vehicle.zip)}
+          {vehicle.status === "inbound" ? "Seller is delivering it" : onTheRoad(vehicle) ? "Out" : "Parked"} · {labelPlace(vehicle.zip)}
         </p>
       </div>
       <p className="text-sm text-ink/70">
@@ -76,10 +78,12 @@ function Owned({ vehicle }: { vehicle: Vehicle }) {
         {spec.payload ? ` · holds ${pounds(spec.payload)}, ${cubes(spec.cube)}` : ""}
         {isTractor(vehicle.kind) ? " · needs a trailer and a CDL" : ""}
       </p>
-      {vehicle.status === "inbound" ? (
+      {onTheRoad(vehicle) ? (
         <p className="text-sm text-ink/70">
-          About {Math.max(1, Math.round(vehicle.routeMiles - vehicle.traveled)).toLocaleString("en-US")} miles out, roughly{" "}
-          {Math.max(1, Math.round(((Math.max(0, vehicle.routeMiles - vehicle.traveled) / 50) / 12) * 60))} minutes on your clock. You are not paying fuel for this trip.
+          <Link to="/road" className="underline">
+            Open Road
+          </Link>{" "}
+          for miles left, and whether fuel eats the pay.
         </p>
       ) : null}
       <div className="h-1 bg-ink/10">

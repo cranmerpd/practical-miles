@@ -45,6 +45,7 @@ type DeskState = {
   divert: (shipmentId: string, warehouseId: string) => string | null;
   rollStored: (shipmentId: string, vehicleId: string, driverId: string, trailerId?: string) => string | null;
   restart: (name: string, zip: string) => string | null;
+  abandon: () => void;
   exportSave: () => string;
   importSave: (raw: string) => string | null;
 };
@@ -195,6 +196,13 @@ export const useDesk = create<DeskState>((set, get) => ({
     set({ frame: get().frame + 1, paused: false });
     persist(world, false);
     return null;
+  },
+  abandon: () => {
+    const world = get().world;
+    world.company = null;
+    world.heldJobId = null;
+    set({ frame: get().frame + 1, paused: true });
+    persist(world, true);
   },
   exportSave: () => JSON.stringify({ world: get().world, paused: get().paused }),
   importSave: (raw) => {

@@ -149,7 +149,7 @@ export function Loads({ onRoute }: { onRoute: (points: MapPoint[] | null) => voi
         <Field label="Sort">
           <Select value={sort} onChange={(event) => setSort(event.target.value as SortKey)}>
             <option value="pay">Pay</option>
-            <option value="rate">Pay per mile</option>
+            <option value="rate">Pay for the miles</option>
             <option value="miles">Distance</option>
             <option value="due">Deadline</option>
             <option value="weight">Weight</option>
@@ -181,6 +181,7 @@ export function Loads({ onRoute }: { onRoute: (points: MapPoint[] | null) => voi
                     </span>
                     <span className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-ink/70">
                       <span className="tabular-nums">{job.miles.toLocaleString("en-US")} mi</span>
+                      <span className="tabular-nums">${(job.pay / Math.max(1, job.miles)).toFixed(2)}/mi</span>
                       <span>{pounds(job.weight)}</span>
                       <span>{cubes(job.cube)}</span>
                       <span>Due {hoursLeft(dueLeft(job, world.simHours))}</span>

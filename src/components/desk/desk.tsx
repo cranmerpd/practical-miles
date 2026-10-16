@@ -150,7 +150,9 @@ function LiveChrome() {
   const { world, company } = useWorld();
   const paused = useDesk((s) => s.paused);
   const togglePause = useDesk((s) => s.togglePause);
+  const abandon = useDesk((s) => s.abandon);
   const path = useRouterState({ select: (state) => state.location.pathname });
+  const [sure, setSure] = useState(false);
   if (!company) return null;
   const closeHours = company.negativeSince == null ? null : (closureDate(company.negativeSince).getTime() - EPOCH) / 3_600_000;
 
@@ -162,7 +164,13 @@ function LiveChrome() {
             <p className="truncate text-xs font-medium uppercase tracking-widest text-ink/50">{whenLabel(world.simHours)}</p>
             <h1 className="truncate font-display text-2xl uppercase leading-none tracking-tight sm:text-3xl">{company.name}</h1>
           </div>
-          <Button variant={paused ? "primary" : "quiet"} onClick={togglePause}>
+          <Button
+            variant={paused ? "primary" : "quiet"}
+            onClick={() => {
+              setSure(false);
+              togglePause();
+            }}
+          >
             {paused ? <Play className="size-4" aria-hidden /> : <Pause className="size-4" aria-hidden />}
             {paused ? "Resume" : "Pause"}
           </Button>
@@ -179,7 +187,26 @@ function LiveChrome() {
         </nav>
       </header>
       <main className="mx-auto w-full max-w-6xl space-y-4 px-4 py-5 pb-28 md:pb-10">
-        {paused ? <p className="text-sm text-ink/60">Paused. Closing the page will not move the clock, run payroll, or count the three months.</p> : null}
+        {paused ? (
+          <div className="space-y-3 border border-ink/15 bg-sheet p-4">
+            <p className="text-sm text-ink/60">Paused. Closing the page will not move the clock, run payroll, or count the three months.</p>
+            {sure ? (
+              <div className="space-y-3">
+                <p className="text-sm">Are you sure? {company.name} is gone. Trucks, drivers, and cash go with it. You start over with a new name.</p>
+                <div className="flex flex-wrap gap-2">
+                  <Button onClick={() => abandon()}>Yes, start over</Button>
+                  <Button variant="quiet" onClick={() => setSure(false)}>
+                    No
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <Button variant="quiet" onClick={() => setSure(true)}>
+                Start over
+              </Button>
+            )}
+          </div>
+        ) : null}
         {closeHours != null ? (
           <p className="text-sm text-rust">The bank account is negative. If it is still red on {whenLabel(closeHours)}, the company closes.</p>
         ) : null}

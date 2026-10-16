@@ -12,7 +12,7 @@ export const Route = createRootRoute({
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: APP_NAME },
-      { name: "description", content: "Run a small US freight company. Buy used trucks, hire drivers, and book ZIP-to-ZIP loads." },
+      { name: "description", content: "Run a small US freight company. Buy a used truck, hire a driver, and move ZIP-to-ZIP loads on the real highway map." },
       { name: "theme-color", content: "#050505" },
     ],
     links: [

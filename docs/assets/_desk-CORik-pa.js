@@ -1,0 +1,1 @@
+import{t as e}from"./desk-BcTk7WVR.js";var t=e;export{t as component};

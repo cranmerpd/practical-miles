@@ -17,6 +17,7 @@ import {
   resumeStored,
   sellVehicle,
   sellYard,
+  sendOnBreak,
   SIM_PER_REAL_HOUR,
   type World,
 } from "./sim";
@@ -39,6 +40,7 @@ type DeskState = {
   accept: (jobId: string, vehicleId: string, driverId: string, trailerId?: string, force?: boolean, stage?: boolean) => string | null;
   cancel: (shipmentId: string) => string | null;
   hireDriver: (id: string) => string | null;
+  sendBreak: (id: string) => string | null;
   fireDriver: (id: string) => string | null;
   buyTruck: (listingId: string, warehouseId: string) => string | null;
   sellTruck: (id: string) => string | null;
@@ -145,6 +147,12 @@ export const useDesk = create<DeskState>((set, get) => ({
   },
   hireDriver: (id) => {
     const error = hire(get().world, id);
+    set({ frame: get().frame + 1 });
+    persist(get().world, get().paused);
+    return error;
+  },
+  sendBreak: (id) => {
+    const error = sendOnBreak(get().world, id);
     set({ frame: get().frame + 1 });
     persist(get().world, get().paused);
     return error;

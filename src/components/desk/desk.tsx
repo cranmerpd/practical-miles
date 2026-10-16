@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { CircleDollarSign, ClipboardList, Map, Package, Pause, Play, Route, Truck, Users, Warehouse } from "lucide-react";
-import { closureDate, EPOCH, money } from "@/game/sim";
+import { closureDate, EPOCH, localDay, money } from "@/game/sim";
 import { useDesk } from "@/game/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -166,7 +166,7 @@ function LiveChrome() {
       <header className="sticky top-0 z-30 border-b border-ink/15 bg-paper/95 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3">
           <div className="min-w-0">
-            <p className="truncate text-xs font-medium uppercase tracking-widest text-ink/50">{whenLabel(world.simHours)}</p>
+            <p className="truncate text-xs font-medium uppercase tracking-widest text-ink/50">{localDay(world.simHours, company.homeZip).label}, {localDay(world.simHours, company.homeZip).clock}</p>
             <h1 className="truncate font-display text-2xl uppercase leading-none tracking-tight sm:text-3xl">{company.name}</h1>
           </div>
           <div className="flex shrink-0 items-center gap-1">

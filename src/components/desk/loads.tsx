@@ -33,11 +33,11 @@ function capOf(company: Company, vehicle: Vehicle): { payload: number; cube: num
   return { payload: spec.payload, cube: spec.cube };
 }
 
-function pilotsFor(company: Company, vehicle: Vehicle): Driver[] {
-  return driversForVehicle(company, vehicle).filter((driver) => !KIND_INFO[vehicle.kind].cdl || driver.cdl);
+function pilotsFor(company: Company, vehicle: Vehicle, simHours: number): Driver[] {
+  return driversForVehicle(company, vehicle, simHours).filter((driver) => !KIND_INFO[vehicle.kind].cdl || driver.cdl);
 }
 
-function canHaul(company: Company, job: MarketJob): { ok: boolean; label: string } {
+function canHaul(company: Company, job: MarketJob, simHours: number): { ok: boolean; label: string } {
   if (job.mode === "air") return { ok: false, label: "Air later" };
   if (job.mode === "sea") return { ok: false, label: "Sea later" };
   const trucks = company.vehicles.filter((vehicle) => vehicle.kind !== "trailer53");
@@ -49,7 +49,7 @@ function canHaul(company: Company, job: MarketJob): { ok: boolean; label: string
     const cap = capOf(company, truck);
     if (job.weight > cap.payload || job.cube > cap.cube) continue;
     size = true;
-    const pilots = pilotsFor(company, truck);
+    const pilots = pilotsFor(company, truck, simHours);
     if (!pilots.length) continue;
     driver = true;
     if (truck.status === "idle" && !isCommitted(truck)) ready = true;
@@ -107,7 +107,7 @@ export function Loads({ onRoute }: { onRoute: (points: MapPoint[] | null) => voi
       if (roadOnly && job.mode !== "road") return false;
       if (fragileOnly && !job.fragile) return false;
       if (lateOnly && !job.lateFee) return false;
-      if (haulOnly && !canHaul(company, job).ok) return false;
+      if (haulOnly && !canHaul(company, job, world.simHours).ok) return false;
       if (nearOnly && nearMiles(company, job.fromZip) > 250) return false;
       return true;
     });
@@ -165,7 +165,7 @@ export function Loads({ onRoute }: { onRoute: (points: MapPoint[] | null) => voi
         ) : (
           <ul className="mt-3 divide-y divide-ink/10">
             {rows.map((job) => {
-              const fit = canHaul(company, job);
+              const fit = canHaul(company, job, world.simHours);
               const heldRow = job.id === world.heldJobId;
               return (
                 <li key={job.id}>
@@ -324,7 +324,7 @@ function Booking({ job, onRoute, onClose }: { job: MarketJob; onRoute: (points: 
     if (!company) return;
     const truck = company.vehicles.find((item) => item.kind !== "trailer53" && item.status === "idle" && !isCommitted(item));
     if (!truck) return;
-    const pilots = pilotsFor(company, truck);
+    const pilots = pilotsFor(company, truck, world.simHours);
     const trailer = isTractor(truck.kind) ? trailersFor(company, truck)[0] : undefined;
     setVehicleId(truck.id);
     setDriverId(pilots[0]?.id ?? "");
@@ -334,7 +334,7 @@ function Booking({ job, onRoute, onClose }: { job: MarketJob; onRoute: (points: 
 
   const trucks = company?.vehicles.filter((vehicle) => vehicle.kind !== "trailer53" && vehicle.status === "idle" && !isCommitted(vehicle)) ?? [];
   const vehicle = trucks.find((item) => item.id === vehicleId) ?? null;
-  const drivers = company && vehicle ? pilotsFor(company, vehicle) : [];
+  const drivers = company && vehicle ? pilotsFor(company, vehicle, world.simHours) : [];
   const trailers = company && vehicle && isTractor(vehicle.kind) ? trailersFor(company, vehicle) : [];
   const driver = drivers.find((item) => item.id === driverId) ?? null;
   const trailer = trailers.find((item) => item.id === trailerId);

@@ -30,10 +30,7 @@ export function Crew() {
   const wages = company.drivers.reduce((sum, driver) => sum + driver.wage, 0);
   const sitting = company.drivers.filter((driver) => !driver.vehicleId);
   const out = company.drivers.length - sitting.length;
-  const resting = company.drivers.filter((driver) => {
-    const truck = company.vehicles.find((vehicle) => vehicle.id === driver.vehicleId);
-    return truck?.restUntil != null && world.simHours < truck.restUntil;
-  }).length;
+  const resting = company.drivers.filter((driver) => driver.restUntil != null && world.simHours < driver.restUntil).length;
 
   return (
     <div className="space-y-4">
@@ -47,7 +44,7 @@ export function Crew() {
         <p className="mt-3 text-sm text-ink/70">
           {company.drivers.length === 0
             ? "Nobody is hired. Wages do not start until you hire."
-            : `${money(wages)} leaves the bank on ${nextPayday(world.simHours)}. A driver off a truck has a full 11-hour day. On a truck, the clock is the hours already driven.`}
+            : `${money(wages)} leaves the bank on ${nextPayday(world.simHours)}. Hours stay with the driver. A 10-hour break at the warehouse clears the day, and they cannot be assigned until it ends.`}
         </p>
         <p className="mt-2 text-sm text-ink/60">They stay with the truck until it parks at a warehouse you own. Skill makes trips faster and damage less likely. It does not change fuel.</p>
         <div className="mt-3">
@@ -98,20 +95,21 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function availability(truck: Vehicle | undefined, simHours: number): string {
-  if (!truck) return "Off a truck. 11 driving hours are open. A 30-minute break is owed after 8 of them, and a 10-hour break after 11.";
-  const left = Math.max(0, 11 - truck.driveToday);
-  const resting = truck.restUntil != null && simHours < truck.restUntil ? truck.restUntil - simHours : 0;
-  if (resting > 0.05 && truck.driveToday < 0.05) return `In the 10-hour break. About ${hoursLeft(resting)} left, then 11 driving hours are open.`;
+function availability(driver: Driver, simHours: number): string {
+  const driven = driver.driveToday ?? 0;
+  const left = Math.max(0, 11 - driven);
+  const resting = driver.restUntil != null && simHours < driver.restUntil ? driver.restUntil - simHours : 0;
+  if (resting > 0.05 && driven < 0.05) return `On a 10-hour break. About ${hoursLeft(resting)} left. Cannot be assigned until it ends. Then 11 driving hours are open.`;
   if (resting > 0.05) return `On a break for about ${hoursLeft(resting)}. ${left.toFixed(1)} driving hours left after it.`;
-  if (!truck.breakTaken && truck.driveToday >= 8) return `Needs the 30-minute break now. ${left.toFixed(1)} driving hours left after it.`;
-  if (!truck.breakTaken) return `${left.toFixed(1)} driving hours left before the 10-hour break. Driven ${truck.driveToday.toFixed(1)}. The 30-minute break is still owed after 8 hours.`;
-  return `${left.toFixed(1)} driving hours left before the 10-hour break. Driven ${truck.driveToday.toFixed(1)}. The 30-minute break is done.`;
+  if (!driver.breakTaken && driven >= 8) return `Needs the 30-minute break now. ${left.toFixed(1)} driving hours left after it.`;
+  if (!driver.breakTaken) return `${left.toFixed(1)} driving hours left before the 10-hour break. Driven ${driven.toFixed(1)}. The 30-minute break is still owed after 8 hours.`;
+  return `${left.toFixed(1)} driving hours left before the 10-hour break. Driven ${driven.toFixed(1)}. The 30-minute break is done.`;
 }
 
 function Roster({ driver, simHours }: { driver: Driver; simHours: number }) {
   const { company } = useWorld();
   const fireDriver = useDesk((s) => s.fireDriver);
+  const sendBreak = useDesk((s) => s.sendBreak);
   const [note, setNote] = useState<string | null>(null);
   if (!company) return null;
   const truck = company.vehicles.find((vehicle) => vehicle.id === driver.vehicleId);
@@ -127,7 +125,12 @@ function Roster({ driver, simHours }: { driver: Driver; simHours: number }) {
         Skill {driver.skill} · {money(driver.wage)} a month
         {truck ? ` · with the ${KIND_INFO[truck.kind].label}` : yard ? ` · at ${labelPlace(yard.zip)}` : " · between yards"}
       </p>
-      <p className="text-sm text-ink/70">{availability(truck, simHours)}</p>
+      <p className="text-sm text-ink/70">{availability(driver, simHours)}</p>
+      {!driver.vehicleId && driver.warehouseId && !(driver.restUntil != null && simHours < driver.restUntil) ? (
+        <Button variant="quiet" onClick={() => setNote(sendBreak(driver.id))}>
+          10-hour break
+        </Button>
+      ) : null}
       {!driver.vehicleId ? (
         <p className="text-sm text-ink/70">
           {ready.length

@@ -88,7 +88,7 @@ function Owned({ vehicle }: { vehicle: Vehicle }) {
   const idle = vehicle.status === "idle" && !isCommitted(vehicle);
   const repairCost = Math.round(((100 - vehicle.condition) / 100) * 0.1 * vehicle.price);
   const drivers = company.drivers.filter((item) => !item.vehicleId && item.warehouseId && company.warehouses.some((yard) => yard.id === item.warehouseId && yard.zip === vehicle.zip));
-  const eligible = drivers.filter((item) => !spec.cdl || item.cdl);
+  const eligible = drivers.filter((item) => (!spec.cdl || item.cdl) && !(item.restUntil != null && world.simHours < item.restUntil));
   const trip = readTrip(world, company, vehicle);
   const legLeft = Math.max(0, vehicle.routeMiles - vehicle.traveled);
   const dest = vehicle.legs[0]?.toZip ?? vehicle.zip;
@@ -118,7 +118,7 @@ function Owned({ vehicle }: { vehicle: Vehicle }) {
           {vehicle.routeMiles > 0 ? <Meter label="This leg" used={vehicle.traveled} cap={vehicle.routeMiles} /> : null}
           <p className="text-ink/70">
             {legLeft > 0 ? `${Math.round(legLeft).toLocaleString("en-US")} miles left on this leg. ` : ""}
-            Driven {vehicle.driveToday.toFixed(1)} of 11 hours today.
+            Driven {(driver?.driveToday ?? vehicle.driveToday).toFixed(1)} of 11 hours today.
           </p>
           {trip.pay > 0 ? (
             <p className={trip.afterFuel < 0 ? "text-rust" : "text-pine"}>

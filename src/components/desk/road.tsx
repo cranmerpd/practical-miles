@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
-import { dockWait, dueDayLabel, KIND_INFO, money } from "@/game/sim";
-import { hoursLeft, Panel, whenLabel, useWorld } from "@/components/desk/bits";
+import { dockWait, dueDayLabel, KIND_INFO, localDay, money } from "@/game/sim";
+import { Panel, useWorld } from "@/components/desk/bits";
 import { readTrip, type TripRead } from "@/components/desk/trip";
 
 export function Road() {
@@ -33,7 +33,9 @@ export function Road() {
 function TripCard({ trip, diesel, simHours }: { trip: TripRead; diesel: number; simHours: number }) {
   const spec = KIND_INFO[trip.vehicle.kind];
   const dest = trip.vehicle.legs[0]?.toZip || trip.vehicle.zip;
-  const waitingOnDock = trip.leg === "Loaded" && dockWait(simHours, dest) > 0.05;
+  const there = localDay(simHours, dest);
+  const closed = trip.leg === "Loaded" && dockWait(simHours, dest) > 0.05;
+  const atDock = trip.vehicle.routeMiles > 0 && trip.vehicle.traveled >= trip.vehicle.routeMiles - 0.2;
   const resting = trip.vehicle.restUntil != null && simHours < trip.vehicle.restUntil;
   const short = trip.pay > 0 && trip.afterFuel < 0;
   return (
@@ -44,13 +46,15 @@ function TripCard({ trip, diesel, simHours }: { trip: TripRead; diesel: number; 
         {trip.driverName ? ` ${trip.driverName} is driving.` : " No driver on it."}
       </p>
       <p className="mt-2 text-sm text-ink/70">
-        {waitingOnDock
-          ? "Dock is closed. It can deliver from 8am to 8pm local time."
-          : resting
-            ? `Resting until ${whenLabel(trip.vehicle.restUntil ?? simHours)}.`
-            : trip.vehicle.status === "inbound"
-              ? "The seller is driving it. You are not paying fuel."
-              : `Driven ${trip.vehicle.driveToday.toFixed(1)} hours today.`}
+        {closed && resting && atDock
+          ? `Waiting at the dock. It is ${there.clock} there. The dock opens at 8am local.`
+          : closed
+            ? `Still rolling. It is ${there.clock} at the dock, which is closed until 8am local. The truck waits only if it arrives before then.`
+            : resting
+              ? `Resting until ${localDay(trip.vehicle.restUntil ?? simHours, dest).clock} local.`
+              : trip.vehicle.status === "inbound"
+                ? "The seller is driving it. You are not paying fuel."
+                : `Driven ${(trip.vehicle.driveToday).toFixed(1)} hours today.`}
       </p>
       {trip.pay > 0 ? (
         <dl className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">

@@ -36,7 +36,7 @@ export function Dispatch() {
     (vehicle) => vehicle.kind !== "trailer53" && vehicle.status === "idle" && vehicle.zip === yard.zip && !isCommitted(vehicle),
   );
   const vehicle = trucks.find((item) => item.id === vehicleId) ?? null;
-  const drivers = vehicle ? driversForVehicle(company, vehicle).filter((driver) => !KIND_INFO[vehicle.kind].cdl || driver.cdl) : [];
+  const drivers = vehicle ? driversForVehicle(company, vehicle, world.simHours).filter((driver) => !KIND_INFO[vehicle.kind].cdl || driver.cdl) : [];
   const driver = drivers.find((item) => item.id === driverId) ?? null;
   const trailers = vehicle && isTractor(vehicle.kind) ? trailersFor(company, vehicle).filter((item) => item.zip === yard.zip && item.status === "idle") : [];
   const trailer = trailers.find((item) => item.id === trailerId);

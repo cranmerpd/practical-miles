@@ -10,7 +10,7 @@ export const Route = createFileRoute("/_desk/finance")({
 function FinancePage() {
   return (
     <Frame>
-      <PageTitle kicker="Money" title="Finance" />
+      <PageTitle kicker="Money" title="Finance" note="Cash and what is still owed, then what delivered freight actually collected. Fuel and wages are in the journal, not in the delivery totals." />
       <Finance />
     </Frame>
   );

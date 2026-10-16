@@ -4,7 +4,7 @@ import { dueDayLabel, isCommitted, isTractor, KIND_INFO, money, type Listing, ty
 import { useDesk } from "@/game/store";
 import { Button } from "@/components/ui/button";
 import { Field, Select } from "@/components/ui/input";
-import { Notice, PageTitle, Panel, PlaceSearch, pounds, cubes, useWorld } from "@/components/desk/bits";
+import { Notice, Panel, PlaceSearch, pounds, cubes, useWorld } from "@/components/desk/bits";
 import { onTheRoad, readTrip, resale } from "@/components/desk/trip";
 
 function sellOffer(vehicle: Vehicle): number {
@@ -26,7 +26,6 @@ export function Fleet() {
 
   return (
     <div className="space-y-4">
-      <PageTitle kicker="Equipment" title="Fleet" note="Condition, the trip each truck is on, and what it would sell for. Buying is a separate lot." />
       <Panel title="The fleet">
         {company.vehicles.length === 0 ? (
           <p className="text-sm text-ink/70">No trucks yet. A used cargo van is the usual first buy. The seller drives it to a warehouse you pick. That delivery fee is not your fuel.</p>

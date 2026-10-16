@@ -32,6 +32,7 @@ export type Vehicle = {
   traveled: number;
   shipmentId: string | null;
   legs: Leg[];
+  done?: Leg[];
   departAt: number | null;
   driveToday: number;
   breakTaken: boolean;
@@ -1280,6 +1281,7 @@ export function dispatchLoop(
   }
   legs.push({ kind: "reposition", toZip: yard.zip });
   vehicle.shipmentId = shipmentIds[0] ?? null;
+  vehicle.done = [];
   vehicle.legs = legs;
   vehicle.departAt = departAt;
   vehicle.status = "idle";
@@ -1373,6 +1375,7 @@ export function acceptJob(
     if (hookedAt !== only.fromZip) legs.push({ kind: "pickup", toZip: only.fromZip, shipmentId: made[0].id });
     legs.push({ kind: "loaded", toZip: only.toZip, shipmentId: made[0].id });
   }
+  vehicle.done = [];
   vehicle.legs = legs;
   vehicle.departAt = world.simHours + 0.05;
   vehicle.status = "idle";
@@ -1898,6 +1901,7 @@ function arrive(world: World, company: Company, vehicle: Vehicle) {
   }
   vehicle.zip = leg.toZip;
   vehicle.mileage += vehicle.routeMiles;
+  vehicle.done = [...(vehicle.done ?? []), { kind: leg.kind, toZip: leg.toZip, shipmentId: leg.shipmentId, warehouseId: leg.warehouseId }];
   if (vehicle.kind !== "trailer53") vehicle.condition = Math.max(8, vehicle.condition - vehicle.routeMiles / 450);
   const trailer = vehicle.coupledTrailerId ? company.vehicles.find((item) => item.id === vehicle.coupledTrailerId) : undefined;
   if (trailer) {

@@ -1,6 +1,6 @@
-import { Link } from "@tanstack/react-router";
-import { dockWait, dueDayLabel, KIND_INFO, localDay, money } from "@/game/sim";
-import { PageTitle, Panel, useWorld } from "@/components/desk/bits";
+import { labelPlace } from "@/game/geo";
+import { dockWait, dueDayLabel, KIND_INFO, localDay, money, type Leg } from "@/game/sim";
+import { Panel, useWorld } from "@/components/desk/bits";
 import { readTrip, type TripRead } from "@/components/desk/trip";
 
 export function Road() {
@@ -13,20 +13,16 @@ export function Road() {
 
   if (trips.length === 0) {
     return (
-      <div className="space-y-4">
-        <PageTitle kicker="In transit" title="Road" note="Only trucks that are moving. Parked equipment is on Fleet." />
-        <Panel title="Nothing is moving">
-          <p className="text-sm text-ink/70">
-            Book a load, or send a truck empty from <Link to="/fleet" className="underline">Fleet</Link>. Fuel against pay shows up here once a truck has a trip.
-          </p>
-        </Panel>
-      </div>
+      <Panel title="Nothing is moving">
+        <p className="text-sm text-ink/70">
+          Book a load, or send a truck empty from Fleet. Fuel against pay shows up here once a truck has a trip.
+        </p>
+      </Panel>
     );
   }
 
   return (
     <div className="space-y-4">
-      <PageTitle kicker="In transit" title="Road" note="Miles left, whether the dock is open, and whether fuel eats the pay." />
       {trips.map((trip) => (
         <TripCard key={trip.vehicle.id} trip={trip} diesel={world.diesel} simHours={world.simHours} />
       ))}
@@ -60,6 +56,20 @@ function TripCard({ trip, diesel, simHours }: { trip: TripRead; diesel: number; 
                 ? "The seller is driving it. You are not paying fuel."
                 : `Driven ${(trip.vehicle.driveToday).toFixed(1)} hours today.`}
       </p>
+      <ol className="mt-3 divide-y divide-ink/10 border border-ink/10">
+        {(trip.vehicle.done ?? []).map((leg, index) => (
+          <LegRow key={`done-${index}`} mark="Done" text={legText(leg)} />
+        ))}
+        {trip.vehicle.legs.map((leg, index) => (
+          <LegRow
+            key={`leg-${index}`}
+            mark={index === 0 ? "Now" : "Next"}
+            text={legText(leg)}
+            detail={index === 0 ? milesOnLeg(trip.vehicle.routeMiles, trip.vehicle.traveled) : undefined}
+            live={index === 0}
+          />
+        ))}
+      </ol>
       {trip.pay > 0 ? (
         <dl className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
           <Cell label={trip.stopsLeft > 1 ? "Still on the truck" : "Customer pays"} value={money(trip.pay)} />
@@ -86,6 +96,34 @@ function TripCard({ trip, diesel, simHours }: { trip: TripRead; diesel: number; 
       {trip.lateFee ? <p className="mt-1 text-sm text-ink/60">Marked load. If it is late, 20% of the original pay comes off the unpaid balance each day.</p> : null}
       <p className="mt-2 text-sm text-ink/45">Diesel moves. This uses today's price, not a locked quote.</p>
     </Panel>
+  );
+}
+
+function milesOnLeg(routeMiles: number, traveled: number): string {
+  const left = Math.max(0, routeMiles - traveled);
+  if (left < 1) return "Here";
+  return `${Math.round(left).toLocaleString("en-US")} mi`;
+}
+
+function legText(leg: Leg): string {
+  const place = labelPlace(leg.toZip);
+  if (leg.kind === "pickup") return `Pick up in ${place}`;
+  if (leg.kind === "loaded") return `Deliver in ${place}`;
+  if (leg.kind === "yard") return `Unload at ${place}`;
+  if (leg.kind === "reposition") return `Return to ${place}`;
+  if (leg.kind === "trailer") return `Hook the trailer in ${place}`;
+  return `Seller delivery to ${place}`;
+}
+
+function LegRow({ mark, text, detail, live = false }: { mark: string; text: string; detail?: string; live?: boolean }) {
+  return (
+    <li className="flex items-baseline justify-between gap-3 px-3 py-2 text-sm">
+      <span>
+        <span className={`mr-3 text-[10px] font-medium uppercase tracking-[0.18em] ${live ? "text-pine" : mark === "Done" ? "text-ink/35" : "text-ink/55"}`}>{mark}</span>
+        <span className={mark === "Done" ? "text-ink/45" : ""}>{text}</span>
+      </span>
+      {detail ? <span className="shrink-0 tabular-nums text-ink/60">{detail}</span> : null}
+    </li>
   );
 }
 

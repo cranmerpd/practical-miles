@@ -10,7 +10,7 @@ export const Route = createFileRoute("/_desk/yards")({
 function YardsPage() {
   return (
     <Frame>
-      <PageTitle kicker="Dispatch" title="Warehouse" />
+      <PageTitle kicker="Dispatch" title="Warehouse" note="Load a truck from the floor and send it out. Another building is for sale under the desk." />
       <Yards />
     </Frame>
   );

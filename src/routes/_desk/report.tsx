@@ -10,7 +10,7 @@ export const Route = createFileRoute("/_desk/report")({
 function ReportPage() {
   return (
     <Frame>
-      <PageTitle kicker="History" title="Report" />
+      <PageTitle kicker="History" title="Report" note="One card for each delivery, grouped by the day the customer paid." />
       <Report />
     </Frame>
   );

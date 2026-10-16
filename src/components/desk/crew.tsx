@@ -3,7 +3,7 @@ import { labelPlace } from "@/game/geo";
 import { gameDate, isCommitted, KIND_INFO, money, type Company, type Driver, type Vehicle } from "@/game/sim";
 import { useDesk } from "@/game/store";
 import { Button } from "@/components/ui/button";
-import { hoursLeft, Notice, PageTitle, Panel, useWorld } from "@/components/desk/bits";
+import { hoursLeft, Notice, Panel, useWorld } from "@/components/desk/bits";
 import { nextPayday, onTheRoad } from "@/components/desk/trip";
 
 function prorate(wage: number, simHours: number): number {
@@ -34,7 +34,6 @@ export function Crew() {
 
   return (
     <div className="space-y-4">
-      <PageTitle kicker="People" title="Staff" note="Hours left on the clock. A driver at a warehouse can take a 10-hour break. Hiring is separate from the roster." />
       <Panel title="The roster">
         <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
           <Stat label="On payroll" value={String(company.drivers.length)} />

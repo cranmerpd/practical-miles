@@ -4,7 +4,7 @@ import { money } from "@/game/sim";
 import { useDesk } from "@/game/store";
 import { Button } from "@/components/ui/button";
 import { Dispatch } from "@/components/desk/dispatch";
-import { Notice, PageTitle, Panel, cubes, pounds, useWorld } from "@/components/desk/bits";
+import { Notice, Panel, cubes, pounds, useWorld } from "@/components/desk/bits";
 
 export function Yards() {
   const { world, company } = useWorld();
@@ -14,7 +14,6 @@ export function Yards() {
 
   return (
     <div className="space-y-4">
-      <PageTitle kicker="Network" title="Yards" note="Load a truck from the floor and send it out. Another building is for sale under the desk." />
       <Dispatch />
       <Panel title="Buildings for sale" kicker="Expand">
         {world.yardOffers.length === 0 ? (

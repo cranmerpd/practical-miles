@@ -10,7 +10,7 @@ export const Route = createFileRoute("/_desk/fleet")({
 function FleetPage() {
   return (
     <Frame>
-      <PageTitle kicker="Equipment" title="Fleet" />
+      <PageTitle kicker="Equipment" title="Fleet" note="Condition, the trip each truck is on, and what it would sell for. Buying is a separate lot." />
       <Fleet />
     </Frame>
   );

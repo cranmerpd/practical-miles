@@ -22,7 +22,7 @@ import {
 import { useDesk } from "@/game/store";
 import { Button } from "@/components/ui/button";
 import { Field, Select } from "@/components/ui/input";
-import { cubes, dockLine, hoursLeft, Notice, PageTitle, Panel, pounds, stamp, useWorld } from "@/components/desk/bits";
+import { cubes, dockLine, hoursLeft, Notice, Panel, pounds, stamp, useWorld } from "@/components/desk/bits";
 
 type SortKey = "pay" | "miles" | "due" | "weight" | "rate";
 
@@ -140,7 +140,6 @@ export function Loads({ onRoute }: { onRoute: (points: MapPoint[] | null) => voi
 
   return (
     <div className="space-y-4">
-      <PageTitle kicker="Freight" title="Loads" note="Your books are freight you already took. The board is new work. Deliver goes to the customer. Bring home stops at your warehouse." />
       <Books />
       {held ? (
         <div id="booking-card" className="sticky top-36 z-10">

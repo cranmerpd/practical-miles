@@ -482,6 +482,14 @@ export function blankWorld(seed = 20260302): World {
 
 export function warmWorld(world: World): void {
   easeDeadlines(world);
+  const company = world.company;
+  if (company) {
+    for (const vehicle of company.vehicles) {
+      if (vehicle.status === "idle" && !isCommitted(vehicle) && vehicle.kind !== "trailer53" && !warehouseAt(company, vehicle.zip)) {
+        headHome(world, company, vehicle);
+      }
+    }
+  }
   if (world.jobs.length < 20) refillBoard(world, 28, 6);
   else if (world.company) refillBoard(world);
   if (world.listings.length < 4) refillListings(world);
@@ -1464,9 +1472,8 @@ function arrive(world: World, company: Company, vehicle: Vehicle) {
     if (shipment && shipment.status !== "done") finishDelivery(world, company, shipment, vehicle);
     if (!vehicle.legs.length) {
       vehicle.shipmentId = null;
-      vehicle.status = "idle";
       vehicle.departAt = null;
-      if (warehouseAt(company, vehicle.zip)) releaseCrew(company, vehicle, true);
+      headHome(world, company, vehicle);
       return;
     }
     armLeg(vehicle);
@@ -1570,6 +1577,22 @@ function rivalAct(world: World) {
     world.jobs = world.jobs.filter((item) => item.id !== job.id);
     log(world, `${rival.name} took ${labelPlace(job.fromZip)} to ${labelPlace(job.toZip)}.`, "info");
   }
+}
+
+function headHome(world: World, company: Company, vehicle: Vehicle) {
+  vehicle.status = "idle";
+  if (vehicle.kind === "trailer53" || warehouseAt(company, vehicle.zip)) {
+    if (warehouseAt(company, vehicle.zip)) releaseCrew(company, vehicle, true);
+    return;
+  }
+  const home = company.warehouses.find((yard) => yard.zip === company.homeZip) ?? company.warehouses[0];
+  const driver = vehicle.driverId ? company.drivers.find((item) => item.id === vehicle.driverId) : undefined;
+  if (!home || home.zip === vehicle.zip || !driver) return;
+  vehicle.legs = [{ kind: "reposition", toZip: home.zip }];
+  vehicle.departAt = world.simHours + 0.02;
+  vehicle.shipmentId = null;
+  armLeg(vehicle);
+  log(world, `${KIND_INFO[vehicle.kind].label} is empty and driving back to ${labelPlace(home.zip)}. You pay the fuel.`, "info");
 }
 
 function payroll(world: World, company: Company) {

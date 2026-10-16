@@ -79,7 +79,9 @@ export const useDesk = create<DeskState>((set, get) => ({
           const realHours = (Date.now() - saved.savedAt) / 3_600_000;
           advance(world, realHours * SIM_PER_REAL_HOUR);
         }
+        warmWorld(world);
         set({ world, paused: Boolean(saved.paused), ready: true, frame: 1 });
+        persist(world, Boolean(saved.paused));
         return;
       }
     } catch {

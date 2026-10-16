@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { KIND_INFO, money } from "@/game/sim";
+import { dockWait, dueDayLabel, KIND_INFO, money } from "@/game/sim";
 import { hoursLeft, Panel, whenLabel, useWorld } from "@/components/desk/bits";
 import { readTrip, type TripRead } from "@/components/desk/trip";
 
@@ -32,6 +32,8 @@ export function Road() {
 
 function TripCard({ trip, diesel, simHours }: { trip: TripRead; diesel: number; simHours: number }) {
   const spec = KIND_INFO[trip.vehicle.kind];
+  const dest = trip.vehicle.legs[0]?.toZip || trip.vehicle.zip;
+  const waitingOnDock = trip.leg === "Loaded" && dockWait(simHours, dest) > 0.05;
   const resting = trip.vehicle.restUntil != null && simHours < trip.vehicle.restUntil;
   const short = trip.pay > 0 && trip.afterFuel < 0;
   return (
@@ -41,11 +43,13 @@ function TripCard({ trip, diesel, simHours }: { trip: TripRead; diesel: number; 
         {trip.driverName ? ` ${trip.driverName} is driving.` : " No driver on it."}
       </p>
       <p className="mt-2 text-sm text-ink/70">
-        {resting
-          ? `Resting until ${whenLabel(trip.vehicle.restUntil ?? simHours)}.`
-          : trip.vehicle.status === "inbound"
-            ? "The seller is driving it. You are not paying fuel."
-            : `Driven ${trip.vehicle.driveToday.toFixed(1)} hours today.`}
+        {waitingOnDock
+          ? "Dock is closed. It can deliver from 8am to 8pm local time."
+          : resting
+            ? `Resting until ${whenLabel(trip.vehicle.restUntil ?? simHours)}.`
+            : trip.vehicle.status === "inbound"
+              ? "The seller is driving it. You are not paying fuel."
+              : `Driven ${trip.vehicle.driveToday.toFixed(1)} hours today.`}
       </p>
       {trip.pay > 0 ? (
         <dl className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
@@ -69,7 +73,7 @@ function TripCard({ trip, diesel, simHours }: { trip: TripRead; diesel: number; 
           {trip.cashForFuel + 1 < trip.burn ? ` About ${money(trip.burn - trip.cashForFuel)} of the fuel is already in the tank, so less cash has to leave the bank.` : ""}
         </p>
       ) : null}
-      {trip.dueAt != null ? <p className="mt-2 text-sm text-ink/60">Due {hoursLeft(trip.dueAt - simHours)}.</p> : null}
+      {trip.dueAt != null ? <p className="mt-2 text-sm text-ink/60">{dueDayLabel(simHours, trip.dueAt, dest)}.</p> : null}
       {trip.lateFee ? <p className="mt-1 text-sm text-ink/60">Marked load. If it is late, 20% of the original pay comes off the unpaid balance each day.</p> : null}
       <p className="mt-2 text-sm text-ink/45">Diesel moves. This uses today's price, not a locked quote.</p>
     </Panel>

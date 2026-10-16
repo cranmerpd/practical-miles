@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { havMiles, labelPlace, lookupZip, type MapPoint } from "@/game/geo";
 import {
   driversForVehicle,
+  dueDayLabel,
   isTractor,
   KIND_INFO,
   money,
@@ -184,7 +185,8 @@ export function Loads({ onRoute }: { onRoute: (points: MapPoint[] | null) => voi
                       <span className="tabular-nums">${(job.pay / Math.max(1, job.miles)).toFixed(2)}/mi</span>
                       <span>{pounds(job.weight)}</span>
                       <span>{cubes(job.cube)}</span>
-                      <span>Due {hoursLeft(dueLeft(job, world.simHours))}</span>
+                      <span>Due {dueDayLabel(world.simHours, job.postedAt + job.dueInHours, job.toZip)}</span>
+                      {job.miles <= 180 && job.weight <= 3500 && job.cube <= 400 ? <span>Van</span> : null}
                       {job.fragile ? <span>Fragile</span> : null}
                       {job.lateFee ? <span>Late fee</span> : null}
                       <span className={fit.ok ? "text-pine" : "text-ink/50"}>{fit.label}</span>
@@ -247,7 +249,7 @@ function Books() {
                 {labelPlace(shipment.toZip)}
               </p>
               <p className="text-sm text-ink/70">
-                {money(shipment.pay)} total · {money(shipment.deposit)} already paid · due {hoursLeft(shipment.dueAt - world.simHours)}
+                {money(shipment.pay)} total · {money(shipment.deposit)} already paid · {dueDayLabel(world.simHours, shipment.dueAt, shipment.toZip).toLowerCase()}
                 {shipment.fragile ? " · fragile" : ""}
                 {shipment.lateFee ? " · late fee if you miss it" : ""}
               </p>

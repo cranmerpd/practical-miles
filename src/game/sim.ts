@@ -1,9 +1,11 @@
 import {
+  havMiles,
   hubs,
   labelPlace,
   lookupZip,
   planRoad,
   places,
+  placesByHub,
   type MapPoint,
   type RoadPlan,
 } from "./geo";
@@ -139,6 +141,7 @@ export type World = {
   seq: number;
   heldJobId: string | null;
   yardOffers: YardOffer[];
+  rules?: string;
 };
 
 export type Ghost = { id: string; name: string; points: MapPoint[]; miles: number; traveled: number };
@@ -299,6 +302,81 @@ function driveHoursFor(miles: number, cruise: number, skill: number): number {
   return highwayHours + localHours;
 }
 
+const EAST = new Set(["CT", "DC", "DE", "FL", "GA", "IN", "MA", "MD", "ME", "MI", "NC", "NH", "NJ", "NY", "OH", "PA", "RI", "SC", "VA", "VT", "WV"]);
+const CENTRAL = new Set(["AL", "AR", "IA", "IL", "KS", "LA", "MN", "MO", "MS", "ND", "NE", "OK", "SD", "TX", "WI"]);
+const MOUNTAIN = new Set(["CO", "ID", "MT", "NM", "UT", "WY"]);
+const PACIFIC = new Set(["CA", "NV", "OR", "WA"]);
+
+function nthSunday(year: number, month: number, n: number): number {
+  const first = new Date(Date.UTC(year, month, 1)).getUTCDay();
+  return 1 + ((7 - first) % 7) + (n - 1) * 7;
+}
+
+function inDst(simHours: number): boolean {
+  const date = gameDate(simHours);
+  const year = date.getUTCFullYear();
+  const start = Date.UTC(year, 2, nthSunday(year, 2, 2), 7);
+  const end = Date.UTC(year, 10, nthSunday(year, 10, 1), 6);
+  const time = date.getTime();
+  return time >= start && time < end;
+}
+
+function standardOffset(state: string, lon: number): number {
+  if (state === "AZ") return -7;
+  if (PACIFIC.has(state)) return -8;
+  if (MOUNTAIN.has(state)) return -7;
+  if (state === "TX" && lon < -104) return -7;
+  if ((state === "KY" || state === "TN" || state === "FL" || state === "IN") && lon < -85) return -6;
+  if (CENTRAL.has(state)) return -6;
+  if (EAST.has(state)) return -5;
+  return Math.max(-8, Math.min(-5, Math.round(lon / 15)));
+}
+
+function zoneOffset(state: string, lon: number, simHours: number): number {
+  const standard = standardOffset(state, lon);
+  if (state === "AZ") return standard;
+  return standard + (inDst(simHours) ? 1 : 0);
+}
+
+function localHour(simHours: number, offset: number): number {
+  const hour = (12 + simHours + offset) % 24;
+  return hour < 0 ? hour + 24 : hour;
+}
+
+export function dockWait(simHours: number, zip: string): number {
+  const place = lookupZip(zip);
+  if (!place) return 0;
+  const hour = localHour(simHours, zoneOffset(place.state, place.lon, simHours));
+  if (hour >= 8 && hour < 20) return 0;
+  if (hour < 8) return 8 - hour;
+  return 24 - hour + 8;
+}
+
+export function dueAtFor(simHours: number, miles: number, toZip: string): number {
+  const drive = dutyHours(driveHoursFor(Math.max(1, miles), 60, 45));
+  const extraDays = miles < 120 ? 1 : miles < 400 ? 2 : miles < 900 ? 3 : 4;
+  const earliest = simHours + drive + dockWait(simHours + drive, toZip);
+  const place = lookupZip(toZip);
+  const hour = localHour(earliest, place ? zoneOffset(place.state, place.lon, earliest) : -5);
+  const untilClose = hour <= 20 ? 20 - hour : 24 - hour + 20;
+  return earliest + untilClose + extraDays * 24;
+}
+
+export function dueDayLabel(simHours: number, dueAt: number, zip: string): string {
+  const place = lookupZip(zip);
+  const nowOff = place ? zoneOffset(place.state, place.lon, simHours) : -5;
+  const dueOff = place ? zoneOffset(place.state, place.lon, dueAt) : -5;
+  const diff = Math.floor((dueAt + 12 + dueOff) / 24) - Math.floor((simHours + 12 + nowOff) / 24);
+  if (diff < 0) return diff === -1 ? "1 day late" : `${-diff} days late`;
+  if (diff === 0) return "Due today";
+  if (diff === 1) return "Due tomorrow";
+  if (diff < 7) {
+    const local = new Date(EPOCH + dueAt * 3_600_000 + dueOff * 3_600_000);
+    return `Due ${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][local.getUTCDay()]}`;
+  }
+  return `Due in ${diff} days`;
+}
+
 export function capacityOf(vehicle: Vehicle, vehicles: Vehicle[]): { payload: number; cube: number } {
   const info = KIND_INFO[vehicle.kind];
   if (vehicle.kind === "daycab" || vehicle.kind === "sleeper") {
@@ -384,9 +462,31 @@ export function blankWorld(seed = 20260302): World {
 }
 
 export function warmWorld(world: World): void {
+  easeDeadlines(world);
   if (world.jobs.length < 20) refillBoard(world, 28, 6);
+  else if (world.company) refillBoard(world);
   if (world.listings.length < 4) refillListings(world);
   if (world.ghosts.length < 6) refillGhosts(world);
+}
+
+function easeDeadlines(world: World) {
+  if (world.rules === "day-docks") return;
+  for (const job of world.jobs) {
+    if (job.mode !== "road") continue;
+    const due = dueAtFor(world.simHours, job.miles, job.toZip);
+    const current = job.postedAt + job.dueInHours;
+    if (current < due) job.dueInHours = due - job.postedAt;
+  }
+  const company = world.company;
+  if (company) {
+    for (const shipment of company.shipments) {
+      if (shipment.status === "done") continue;
+      const miles = planRoad(shipment.fromZip, shipment.toZip)?.miles ?? 80;
+      const due = dueAtFor(world.simHours, miles, shipment.toZip);
+      if (shipment.dueAt < due) shipment.dueAt = due;
+    }
+  }
+  world.rules = "day-docks";
 }
 
 export function createWorld(seed = 20260302): World {
@@ -424,7 +524,8 @@ export function foundCompany(world: World, name: string, zip: string): string | 
   world.company = company;
   refillApplicants(world, yard);
   refillYards(world);
-  log(world, `${company.name} opens in ${labelPlace(place.zip)} with $25,000 and a small warehouse.`, "good");
+  refillBoard(world);
+  log(world, `${company.name} opens in ${labelPlace(place.zip)} with $25,000 and a small warehouse. Short van loads are posting around that building.`, "good");
   return null;
 }
 
@@ -434,7 +535,7 @@ function randomRoadPair(world: World): { from: string; to: string; plan: RoadPla
     const b = places[ri(world, places.length)];
     if (a.zip === b.zip) continue;
     const plan = planRoad(a.zip, b.zip);
-    if (!plan || plan.miles < 25 || plan.miles > 2200) continue;
+    if (!plan || plan.miles < 200 || plan.miles > 2200) continue;
     return { from: a.zip, to: b.zip, plan };
   }
   return null;
@@ -443,21 +544,17 @@ function randomRoadPair(world: World): { from: string; to: string; plan: RoadPla
 function makeJob(world: World, mode: MarketJob["mode"]): MarketJob | null {
   const pair = mode === "road" ? randomRoadPair(world) : randomRoadPair(world);
   if (!pair) return null;
-  const rep = world.company?.rep ?? 35;
   const miles = mode === "road" ? pair.plan.miles : mode === "air" ? Math.round(pair.plan.miles * 0.82) : Math.round(pair.plan.miles * 1.4);
   const fragile = rngNext(world) < 0.22;
-  const heavy = rngNext(world) < (rep > 60 ? 0.35 : 0.18);
-  const weight = mode === "road" ? (heavy ? 8000 + ri(world, 28000) : 400 + ri(world, 7000)) : 2000 + ri(world, 20000);
+  const heavy = mode === "road" && rngNext(world) < 0.28;
+  const weight = mode === "road" ? (heavy ? 8000 + ri(world, 28000) : 800 + ri(world, 9000)) : 2000 + ri(world, 20000);
   const cube = mode === "road" ? Math.round(weight * (0.12 + rngNext(world) * 0.18)) : Math.round(weight * 0.2);
   const lateFee = rngNext(world) < 0.1;
-  const tight = rep < 40 && rngNext(world) < 0.45;
-  const rate = (miles < 120 ? 3.35 : miles < 400 ? 2.5 : 2.05) * (1 + 0.08 * Math.sin(world.simHours / 36));
-  let pay = Math.round(miles * rate * (fragile ? 1.08 : 1) * (lateFee ? 1.06 : 1) * (tight ? 0.86 : 1));
+  const rate = (miles < 400 ? 2.5 : 2.05) * (1 + 0.08 * Math.sin(world.simHours / 36));
+  let pay = Math.round(miles * rate * (fragile ? 1.08 : 1) * (lateFee ? 1.06 : 1));
   if (mode !== "road") pay = Math.round(pay * 2.4);
   const cargoValue = Math.round((6000 + rngNext(world) * 50000) * (fragile ? 1.4 : 1) * (rngNext(world) < 0.08 ? 2.2 : 1));
-  const slack = tight ? 4 + rngNext(world) * 10 : 8 + rngNext(world) * 30;
-  const drive = driveHoursFor(miles, 60, 50);
-  const dueIn = dutyHours(drive) + slack;
+  const dueAt = dueAtFor(world.simHours, miles, pair.to);
   return {
     id: uid(world, "job"),
     mode,
@@ -470,14 +567,75 @@ function makeJob(world: World, mode: MarketJob["mode"]): MarketJob | null {
     cargoValue,
     pay,
     lateFee,
-    dueInHours: dueIn,
+    dueInHours: Math.max(24, dueAt - world.simHours),
     postedAt: world.simHours,
-    expiresAt: world.simHours + (mode === "road" ? 18 + rngNext(world) * 30 : 36),
+    expiresAt: world.simHours + (mode === "road" ? 36 + rngNext(world) * 36 : 48),
   };
 }
 
-function refillBoard(world: World, roadTarget = 48, otherTarget = 8) {
-  let road = world.jobs.filter((job) => job.mode === "road").length;
+function pickByHub(world: World, zip: string, minMiles: number, maxMiles: number) {
+  const home = lookupZip(zip);
+  if (!home) return null;
+  const hits: number[] = [];
+  for (let i = 0; i < hubs.length; i++) {
+    const away = havMiles(home.lat, home.lon, hubs[i].lat, hubs[i].lon);
+    if (away >= minMiles && away <= maxMiles) hits.push(i);
+  }
+  if (!hits.length) return null;
+  const list = placesByHub[hits[ri(world, hits.length)]];
+  if (!list?.length) return null;
+  return list[ri(world, list.length)];
+}
+
+function makeLocalJob(world: World): MarketJob | null {
+  const yards = world.company?.warehouses ?? [];
+  if (!yards.length) return null;
+  const yard = yards[ri(world, yards.length)];
+  const outbound = rngNext(world) < 0.65;
+  const near = pickByHub(world, yard.zip, 0, 45);
+  const far = pickByHub(world, yard.zip, 30, 150);
+  if (!near || !far || near.zip === far.zip) return null;
+  const from = outbound ? near.zip : far.zip;
+  const to = outbound ? far.zip : near.zip;
+  const plan = planRoad(from, to);
+  if (!plan || plan.miles < 18 || plan.miles > 180) return null;
+  const weight = 120 + ri(world, 2300);
+  const cube = Math.min(360, Math.round(weight * (0.08 + rngNext(world) * 0.08)));
+  const fragile = rngNext(world) < 0.12;
+  const lateFee = rngNext(world) < 0.06;
+  const rate = 3.6 * (1 + 0.08 * Math.sin(world.simHours / 36));
+  const pay = Math.max(180, Math.round(plan.miles * rate * (fragile ? 1.08 : 1) * (lateFee ? 1.06 : 1)));
+  const dueAt = dueAtFor(world.simHours, plan.miles, to);
+  return {
+    id: uid(world, "job"),
+    mode: "road",
+    fromZip: from,
+    toZip: to,
+    miles: plan.miles,
+    weight,
+    cube,
+    fragile,
+    cargoValue: Math.round(1200 + rngNext(world) * 7000),
+    pay,
+    lateFee,
+    dueInHours: Math.max(24, dueAt - world.simHours),
+    postedAt: world.simHours,
+    expiresAt: world.simHours + 30 + rngNext(world) * 18,
+  };
+}
+
+function refillBoard(world: World, roadTarget = 36, otherTarget = 6) {
+  if (world.company) {
+    let local = world.jobs.filter((job) => job.mode === "road" && job.miles <= 180 && job.weight <= 2800 && job.cube <= 400).length;
+    let tries = 0;
+    while (local < 10 && tries++ < 80) {
+      const job = makeLocalJob(world);
+      if (!job) continue;
+      world.jobs.push(job);
+      local++;
+    }
+  }
+  let road = world.jobs.filter((job) => job.mode === "road" && job.miles > 180).length;
   let other = world.jobs.filter((job) => job.mode !== "road").length;
   let guard = 0;
   while (road < roadTarget && guard++ < roadTarget + 20) {
@@ -622,7 +780,7 @@ export function quoteJob(
   }
   const miles = dead.miles + loadedPlan.miles;
   const drive = driveHoursFor(miles, spec.cruise || 60, driver.skill);
-  const hours = dutyHours(drive);
+  const hours = dutyHours(drive) + dockWait(world.simHours + dutyHours(drive), job.toZip);
   const mpg = spec.mpg || 7;
   const gallons = miles / mpg;
   const fuelCost = gallons * world.diesel;
@@ -1162,7 +1320,24 @@ function moveVehicle(world: World, company: Company, vehicle: Vehicle, dt: numbe
       pushCash(world, company, -buy * world.diesel, `Fuel stop ${money(buy * world.diesel)} for the ${spec.label}.`, "info");
     }
   }
-  if (vehicle.traveled >= vehicle.routeMiles - 0.05) arrive(world, company, vehicle);
+  if (vehicle.traveled >= vehicle.routeMiles - 0.05) {
+    const leg = vehicle.legs[0];
+    if (leg?.kind === "loaded" && vehicle.status !== "inbound") {
+      const wait = dockWait(world.simHours, leg.toZip);
+      if (wait > 0.05) {
+        if (vehicle.restUntil == null || vehicle.restUntil <= world.simHours) {
+          log(world, `Dock is closed in ${labelPlace(leg.toZip)}. The truck waits until 8am local.`, "info");
+        }
+        vehicle.restUntil = world.simHours + wait;
+        if (wait > 2) {
+          vehicle.driveToday = 0;
+          vehicle.breakTaken = false;
+        }
+        return;
+      }
+    }
+    arrive(world, company, vehicle);
+  }
 }
 
 function rivalAct(world: World) {
@@ -1173,8 +1348,10 @@ function rivalAct(world: World) {
     if (rngNext(world) > appetite) continue;
     const roads = world.jobs.filter((job) => job.mode === "road" && job.id !== world.heldJobId);
     if (!roads.length) return;
-    roads.sort((a, b) => b.pay / b.miles - a.pay / a.miles);
-    const job = roads[ri(world, Math.min(4, roads.length))];
+    const longHaul = roads.filter((job) => job.miles > 180);
+    const pool = longHaul.length && rngNext(world) > 0.22 ? longHaul : roads;
+    pool.sort((a, b) => b.pay / b.miles - a.pay / a.miles);
+    const job = pool[ri(world, Math.min(4, pool.length))];
     world.jobs = world.jobs.filter((item) => item.id !== job.id);
     log(world, `${rival.name} took ${labelPlace(job.fromZip)} to ${labelPlace(job.toZip)}.`, "info");
   }

@@ -49,6 +49,9 @@ export const places: Place[] = data.places.map(([zip, city, state, lat, lon, hub
 const byZip = new Map<string, Place>();
 for (const place of places) byZip.set(place.zip, place);
 
+export const placesByHub: Place[][] = hubs.map(() => []);
+for (const place of places) placesByHub[place.hub]?.push(place);
+
 const adj: { to: number; miles: number }[][] = hubs.map(() => []);
 for (const [a, b, miles] of data.edges) {
   adj[a].push({ to: b, miles });

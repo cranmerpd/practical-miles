@@ -62,6 +62,32 @@ export function lookupZip(zip: string): Place | undefined {
   return byZip.get(zip.trim().padStart(5, "0"));
 }
 
+export function hubsOnRoad(fromZip: string, toZip: string): number[] | null {
+  const from = lookupZip(fromZip);
+  const to = lookupZip(toZip);
+  if (!from || !to) return null;
+  if (from.hub === to.hub) return [from.hub];
+  const highway = shortest(from.hub, to.hub);
+  return highway ? highway.path : null;
+}
+
+export function hubsWithin(ids: number[], hops: number): Set<number> {
+  const seen = new Set(ids);
+  let edge = [...ids];
+  for (let hop = 0; hop < hops; hop++) {
+    const next: number[] = [];
+    for (const id of edge) {
+      for (const link of adj[id] ?? []) {
+        if (seen.has(link.to)) continue;
+        seen.add(link.to);
+        next.push(link.to);
+      }
+    }
+    edge = next;
+  }
+  return seen;
+}
+
 export function searchPlaces(query: string, limit = 8): Place[] {
   const q = query.trim().toLowerCase();
   if (q.length < 2) return [];

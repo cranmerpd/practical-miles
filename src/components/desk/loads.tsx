@@ -4,10 +4,13 @@ import { havMiles, labelPlace, lookupZip, type MapPoint } from "@/game/geo";
 import {
   driversForVehicle,
   dueDayLabel,
+  insertPickup,
   isCommitted,
   isTractor,
   KIND_INFO,
   money,
+  pickupChoices,
+  previewStage,
   quoteJob,
   SIM_PER_REAL_HOUR,
   trailersFor,
@@ -31,6 +34,15 @@ function capOf(company: Company, vehicle: Vehicle): { payload: number; cube: num
   }
   const spec = KIND_INFO[vehicle.kind];
   return { payload: spec.payload, cube: spec.cube };
+}
+
+function moveId(order: string[], index: number, step: number): string[] {
+  const next = order.slice();
+  const to = index + step;
+  if (to < 0 || to >= next.length) return order;
+  const [item] = next.splice(index, 1);
+  next.splice(to, 0, item);
+  return next;
 }
 
 function pilotsFor(company: Company, vehicle: Vehicle, simHours: number): Driver[] {
@@ -318,6 +330,7 @@ function Booking({ job, onRoute, onClose }: { job: MarketJob; onRoute: (points: 
   const [vehicleId, setVehicleId] = useState("");
   const [driverId, setDriverId] = useState("");
   const [trailerId, setTrailerId] = useState("");
+  const [order, setOrder] = useState<string[]>([]);
   const [note, setNote] = useState<string | null>(null);
 
   useEffect(() => {
@@ -329,6 +342,7 @@ function Booking({ job, onRoute, onClose }: { job: MarketJob; onRoute: (points: 
     setVehicleId(truck.id);
     setDriverId(pilots[0]?.id ?? "");
     setTrailerId(trailer?.id ?? "");
+    setOrder([job.id]);
     setNote(null);
   }, [job.id, company]);
 
@@ -340,10 +354,15 @@ function Booking({ job, onRoute, onClose }: { job: MarketJob; onRoute: (points: 
   const trailer = trailers.find((item) => item.id === trailerId);
 
   const quote = company && vehicle && driver ? quoteJob(world, job, vehicle, driver, isTractor(vehicle.kind) ? trailer : undefined) : null;
-  const sig = quote?.ok ? `${job.id}:${vehicleId}:${driverId}:${trailerId}:${Math.round(quote.deadhead)}` : job.id;
+  const home = company && vehicle ? company.warehouses.find((yard) => yard.zip === vehicle.zip) : undefined;
+  const canStage = Boolean(quote?.ok && home && job.miles <= 400);
+  const choices = canStage && vehicle ? pickupChoices(world, vehicle, job, isTractor(vehicle.kind) ? trailer : undefined) : [];
+  const pickupOrder = order.includes(job.id) ? order.filter((id) => id === job.id || choices.some((item) => item.jobId === id)) : [job.id];
+  const stage = canStage && vehicle && driver ? previewStage(world, vehicle, driver, pickupOrder, isTractor(vehicle.kind) ? trailer : undefined) : null;
+  const sig = stage && pickupOrder.length > 1 && stage.ok ? `stage:${pickupOrder.join()}` : quote?.ok ? `${job.id}:${vehicleId}:${driverId}:${trailerId}:${Math.round(quote.deadhead)}` : job.id;
 
   useEffect(() => {
-    onRoute(quote?.ok ? quote.points : null);
+    onRoute(stage && pickupOrder.length > 1 && stage.ok ? stage.points : quote?.ok ? quote.points : null);
     return () => onRoute(null);
     // Route preview follows the current quote. Parent callback is stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -451,9 +470,9 @@ function Booking({ job, onRoute, onClose }: { job: MarketJob; onRoute: (points: 
           </div>
         </dl>
         <p className={`mt-3 text-sm ${quote.dockClosed ? "text-rust" : "text-pine"}`}>{dockLine(quote.arriveAt, quote.unloadAt, job.toZip, quote.dockClosed)}</p>
-        {quote.stageAt != null && job.miles <= 400 && vehicle && company.warehouses.some((yard) => yard.zip === vehicle.zip) ? (
+        {quote.stageAt != null && canStage && vehicle ? (
           <p className="mt-3 text-sm text-ink/70">
-            Bringing it home instead gets the truck back to {labelPlace(vehicle.zip)} about {stamp(quote.stageAt, vehicle.zip)}. The customer dock is not on that trip.
+            Bringing it home gets the truck back to {labelPlace(vehicle.zip)} about {stage?.ok ? stamp(stage.homeAt, vehicle.zip) : stamp(quote.stageAt, vehicle.zip)}. The customer dock is not on that trip.
           </p>
         ) : null}
         </>
@@ -465,10 +484,80 @@ function Booking({ job, onRoute, onClose }: { job: MarketJob; onRoute: (points: 
           {warning}
         </p>
       ))}
+      {canStage && vehicle && stage ? (
+        <div className="mt-4 space-y-3 border border-ink/15 p-3">
+          <p className="text-sm font-medium">Also pick up on the way home</p>
+          <p className="text-sm text-ink/60">One hop off this route, and only if the stop adds 75 miles or less. They have to fit on the truck and in the warehouse.</p>
+          {choices.length === 0 ? (
+            <p className="text-sm text-ink/70">Nothing else on the board is on the way.</p>
+          ) : (
+            <ul className="space-y-2">
+              {choices.map((choice) => {
+                const on = pickupOrder.includes(choice.jobId);
+                const room = stage.ok && (on || (stage.weight + choice.weight <= stage.payload && stage.cube + choice.cube <= stage.cubeCap && stage.weight + choice.weight <= stage.yardRoomWeight && stage.cube + choice.cube <= stage.yardRoomCube));
+                return (
+                  <li key={choice.jobId} className="border-b border-ink/10 pb-2 last:border-0">
+                    <label className="flex items-start gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        className="mt-1"
+                        checked={on}
+                        disabled={!on && !room}
+                        onChange={() => {
+                          setOrder((current) => {
+                            const base = current.includes(job.id) ? current : [job.id];
+                            if (base.includes(choice.jobId)) return base.filter((id) => id !== choice.jobId);
+                            const known = base.map((id) => {
+                              const item = id === job.id ? job : world.jobs.find((row) => row.id === id);
+                              return item ? { id, zip: item.fromZip } : null;
+                            }).filter((item): item is { id: string; zip: string } => item != null);
+                            return insertPickup(vehicle.zip, known, { id: choice.jobId, zip: choice.fromZip });
+                          });
+                          setNote(null);
+                        }}
+                      />
+                      <span>
+                        <span className="font-medium">{labelPlace(choice.fromZip)}</span>
+                        <span className="text-ink/50"> to </span>
+                        {labelPlace(choice.toZip)}
+                        <span className="mt-1 block text-ink/70">
+                          {pounds(choice.weight)} · {cubes(choice.cube)} · +{choice.extraMiles} mi · {dueDayLabel(world.simHours, choice.dueAt, choice.toZip)}
+                          {!on && !room ? " · no room" : ""}
+                        </span>
+                      </span>
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {pickupOrder.length > 0 ? (
+            <ol className="space-y-2">
+              {pickupOrder.map((id, index) => {
+                const item = id === job.id ? job : world.jobs.find((row) => row.id === id);
+                if (!item) return null;
+                return (
+                  <li key={id} className="flex flex-wrap items-center gap-2 text-sm">
+                    <span className="inline-flex h-7 w-7 items-center justify-center border border-ink/20 tabular-nums">{index + 1}</span>
+                    <span className="min-w-0 flex-1">{labelPlace(item.fromZip)}{id === job.id ? " · the load you opened" : ""}</span>
+                    <Button variant="quiet" disabled={index === 0} onClick={() => setOrder((current) => moveId(current, index, -1))}>Earlier</Button>
+                    <Button variant="quiet" disabled={index === pickupOrder.length - 1} onClick={() => setOrder((current) => moveId(current, index, 1))}>Later</Button>
+                  </li>
+                );
+              })}
+            </ol>
+          ) : null}
+          {stage.ok ? (
+            <p className="text-sm text-ink/70">
+              {pickupOrder.length} pickup{pickupOrder.length === 1 ? "" : "s"}. Home about {stamp(stage.homeAt, vehicle.zip)}. Fuel about {money(stage.fuelCost)}. Truck {pounds(stage.weight)} of {pounds(stage.payload)}.
+            </p>
+          ) : (
+            <p className="text-sm text-rust">{stage.reason}</p>
+          )}
+        </div>
+      ) : null}
       {quote?.ok && vehicle && job.miles <= 400 && company.warehouses.some((yard) => yard.zip === vehicle.zip) ? (
-        <p className="mt-3 text-sm text-ink/60">
-          Bring it to the warehouse if you want to unload it there and deliver it later, with other freight. The customer’s day still runs.
-        </p>
+        <p className="mt-3 text-sm text-ink/60">The customer’s day still runs while the freight sits in the warehouse.</p>
       ) : null}
       <div className="mt-3 flex flex-wrap gap-2">
         <Button
@@ -484,13 +573,14 @@ function Booking({ job, onRoute, onClose }: { job: MarketJob; onRoute: (points: 
         {quote?.ok && vehicle && job.miles <= 400 && company.warehouses.some((yard) => yard.zip === vehicle.zip) ? (
           <Button
             variant="quiet"
+            disabled={!stage?.ok}
             onClick={() => {
-              const error = accept(job.id, vehicleId, driverId, trailerId || undefined, true, true);
+              const error = accept(job.id, vehicleId, driverId, trailerId || undefined, true, true, pickupOrder);
               if (error && error !== "CONFIRM") setNote(error);
               else setNote(null);
             }}
           >
-            Bring it to {labelPlace(vehicle.zip)}
+            {pickupOrder.length > 1 ? `Bring ${pickupOrder.length} home` : `Bring it to ${labelPlace(vehicle.zip)}`}
           </Button>
         ) : null}
         <Button variant="quiet" onClick={onClose}>

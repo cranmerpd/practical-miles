@@ -37,7 +37,7 @@ type DeskState = {
   tick: (realSeconds: number) => void;
   found: (name: string, zip: string) => string | null;
   holdJob: (id: string | null) => void;
-  accept: (jobId: string, vehicleId: string, driverId: string, trailerId?: string, force?: boolean, stage?: boolean) => string | null;
+  accept: (jobId: string, vehicleId: string, driverId: string, trailerId?: string, force?: boolean, stage?: boolean, pickupIds?: string[]) => string | null;
   cancel: (shipmentId: string) => string | null;
   hireDriver: (id: string) => string | null;
   sendBreak: (id: string) => string | null;
@@ -133,8 +133,8 @@ export const useDesk = create<DeskState>((set, get) => ({
     get().world.heldJobId = id;
     set({ frame: get().frame + 1 });
   },
-  accept: (jobId, vehicleId, driverId, trailerId, force, stage) => {
-    const error = acceptJob(get().world, jobId, vehicleId, driverId, trailerId, force, stage);
+  accept: (jobId, vehicleId, driverId, trailerId, force, stage, pickupIds) => {
+    const error = acceptJob(get().world, jobId, vehicleId, driverId, trailerId, force, stage, pickupIds);
     set({ frame: get().frame + 1 });
     persist(get().world, get().paused);
     return error;

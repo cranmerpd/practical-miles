@@ -7,6 +7,7 @@ import {
   cancelShipment,
   blankWorld,
   warmWorld,
+  dispatchLoop,
   divertToYard,
   fire,
   foundCompany,
@@ -32,7 +33,7 @@ type DeskState = {
   tick: (realSeconds: number) => void;
   found: (name: string, zip: string) => string | null;
   holdJob: (id: string | null) => void;
-  accept: (jobId: string, vehicleId: string, driverId: string, trailerId?: string, force?: boolean) => string | null;
+  accept: (jobId: string, vehicleId: string, driverId: string, trailerId?: string, force?: boolean, stage?: boolean) => string | null;
   cancel: (shipmentId: string) => string | null;
   hireDriver: (id: string) => string | null;
   fireDriver: (id: string) => string | null;
@@ -44,6 +45,7 @@ type DeskState = {
   sendTruck: (vehicleId: string, zip: string, driverId?: string) => string | null;
   divert: (shipmentId: string, warehouseId: string) => string | null;
   rollStored: (shipmentId: string, vehicleId: string, driverId: string, trailerId?: string) => string | null;
+  dispatch: (warehouseId: string, vehicleId: string, driverId: string, shipmentIds: string[], trailerId?: string, atDawn?: boolean) => string | null;
   restart: (name: string, zip: string) => string | null;
   abandon: () => void;
   exportSave: () => string;
@@ -118,8 +120,8 @@ export const useDesk = create<DeskState>((set, get) => ({
     get().world.heldJobId = id;
     set({ frame: get().frame + 1 });
   },
-  accept: (jobId, vehicleId, driverId, trailerId, force) => {
-    const error = acceptJob(get().world, jobId, vehicleId, driverId, trailerId, force);
+  accept: (jobId, vehicleId, driverId, trailerId, force, stage) => {
+    const error = acceptJob(get().world, jobId, vehicleId, driverId, trailerId, force, stage);
     set({ frame: get().frame + 1 });
     persist(get().world, get().paused);
     return error;
@@ -186,6 +188,12 @@ export const useDesk = create<DeskState>((set, get) => ({
   },
   rollStored: (shipmentId, vehicleId, driverId, trailerId) => {
     const error = resumeStored(get().world, shipmentId, vehicleId, driverId, trailerId);
+    set({ frame: get().frame + 1 });
+    persist(get().world, get().paused);
+    return error;
+  },
+  dispatch: (warehouseId, vehicleId, driverId, shipmentIds, trailerId, atDawn) => {
+    const error = dispatchLoop(get().world, warehouseId, vehicleId, driverId, shipmentIds, trailerId, atDawn);
     set({ frame: get().frame + 1 });
     persist(get().world, get().paused);
     return error;

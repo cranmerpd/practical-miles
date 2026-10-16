@@ -1,5 +1,5 @@
 import { labelPlace, planRoad } from "@/game/geo";
-import { gameDate, KIND_INFO, type Company, type Vehicle, type World } from "@/game/sim";
+import { gameDate, KIND_INFO, shipmentsOn, type Company, type Vehicle, type World } from "@/game/sim";
 
 export type TripRead = {
   vehicle: Vehicle;
@@ -16,6 +16,7 @@ export type TripRead = {
   driverName: string | null;
   lateFee: boolean;
   dueAt: number | null;
+  stopsLeft: number;
 };
 
 const LEG: Record<string, string> = {
@@ -50,11 +51,13 @@ export function readTrip(world: World, company: Company, vehicle: Vehicle): Trip
   const gallons = !inbound && spec.mpg > 0 ? milesLeft / spec.mpg : 0;
   const burn = gallons * world.diesel;
   const cashForFuel = Math.max(0, gallons - Math.max(0, vehicle.fuel)) * world.diesel;
-  const shipment = vehicle.shipmentId ? company.shipments.find((item) => item.id === vehicle.shipmentId) : undefined;
-  const pay = shipment?.pay ?? 0;
-  const deposit = shipment?.deposit ?? 0;
-  const balance = Math.max(0, pay - deposit);
+  const carried = shipmentsOn(company, vehicle);
+  const pay = carried.reduce((sum, item) => sum + item.pay, 0);
+  const deposit = carried.reduce((sum, item) => sum + item.deposit, 0);
+  const balance = carried.reduce((sum, item) => sum + Math.max(0, item.pay - item.deposit), 0);
   const leg = vehicle.legs[0];
+  const next = vehicle.legs.find((item) => item.kind === "loaded" && item.shipmentId);
+  const nextShipment = next ? carried.find((item) => item.id === next.shipmentId) : carried[0];
   return {
     vehicle,
     milesLeft,
@@ -68,8 +71,9 @@ export function readTrip(world: World, company: Company, vehicle: Vehicle): Trip
     leg: inbound ? LEG.inbound : leg ? LEG[leg.kind] : "Out",
     heading: leg ? labelPlace(leg.toZip) : labelPlace(vehicle.zip),
     driverName: company.drivers.find((driver) => driver.id === vehicle.driverId)?.name ?? null,
-    lateFee: Boolean(shipment?.lateFee),
-    dueAt: shipment?.dueAt ?? null,
+    lateFee: Boolean(nextShipment?.lateFee),
+    dueAt: nextShipment?.dueAt ?? null,
+    stopsLeft: vehicle.legs.filter((item) => item.kind === "loaded").length,
   };
 }
 

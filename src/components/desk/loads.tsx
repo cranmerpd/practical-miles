@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { havMiles, labelPlace, lookupZip, type MapPoint } from "@/game/geo";
 import {
   driversForVehicle,
   dueDayLabel,
+  isCommitted,
   isTractor,
   KIND_INFO,
   money,
@@ -50,7 +52,7 @@ function canHaul(company: Company, job: MarketJob): { ok: boolean; label: string
     const pilots = pilotsFor(company, truck);
     if (!pilots.length) continue;
     driver = true;
-    if (truck.status === "idle" && !truck.shipmentId) ready = true;
+    if (truck.status === "idle" && !isCommitted(truck)) ready = true;
   }
   if (ready) return { ok: true, label: "Can haul" };
   if (size && trucks.some((truck) => truck.status === "inbound" && job.weight <= capOf(company, truck).payload && job.cube <= capOf(company, truck).cube)) {
@@ -220,12 +222,8 @@ function Books() {
   const { world, company } = useWorld();
   const cancel = useDesk((s) => s.cancel);
   const divert = useDesk((s) => s.divert);
-  const rollStored = useDesk((s) => s.rollStored);
   const [note, setNote] = useState<string | null>(null);
   const [yardId, setYardId] = useState("");
-  const [vehicleId, setVehicleId] = useState("");
-  const [driverId, setDriverId] = useState("");
-  const [trailerId, setTrailerId] = useState("");
   if (!company) return null;
   const active = company.shipments.filter((shipment) => shipment.status !== "done");
   if (!active.length) return null;
@@ -234,7 +232,9 @@ function Books() {
     <Panel title="On your books">
       <ul className="space-y-4">
         {active.map((shipment) => {
-          const vehicle = company.vehicles.find((item) => item.shipmentId === shipment.id || item.id === shipment.vehicleId);
+          const vehicle = company.vehicles.find(
+            (item) => item.id === shipment.vehicleId || item.shipmentId === shipment.id || item.legs.some((leg) => leg.shipmentId === shipment.id),
+          );
           const seconds =
             vehicle?.departAt != null && shipment.status === "booked"
               ? Math.max(0, (vehicle.departAt - world.simHours) * (3600 / SIM_PER_REAL_HOUR))
@@ -255,11 +255,13 @@ function Books() {
               </p>
               <p className="text-sm">
                 {shipment.status === "stored" && yard
-                  ? `Sitting in ${labelPlace(yard.zip)}. The customer has not paid the balance, and the due time is still running.`
+                  ? `Sitting in ${labelPlace(yard.zip)}. Load it with other freight on the warehouse desk. The due day is still running.`
                   : shipment.status === "booked"
-                    ? seconds > 0
-                      ? `Booked. The truck starts in ${Math.ceil(seconds)}s. You can still give the deposit back.`
-                      : "Booked and about to roll."
+                    ? seconds > 120
+                      ? "Booked. The truck is waiting to leave."
+                      : seconds > 0
+                        ? `Booked. The truck starts in ${Math.ceil(seconds)}s. You can still give the deposit back.`
+                        : "Booked and about to roll."
                     : `On the road${milesLeft != null ? `, about ${Math.round(milesLeft).toLocaleString("en-US")} miles left on this leg` : ""}.`}
               </p>
               {shipment.status !== "stored" ? (
@@ -294,17 +296,11 @@ function Books() {
                   </Button>
                 </div>
               ) : (
-                <Resume
-                  shipmentId={shipment.id}
-                  warehouseId={shipment.warehouseId ?? ""}
-                  vehicleId={vehicleId}
-                  driverId={driverId}
-                  trailerId={trailerId}
-                  setVehicleId={setVehicleId}
-                  setDriverId={setDriverId}
-                  setTrailerId={setTrailerId}
-                  onSend={() => setNote(rollStored(shipment.id, vehicleId, driverId, trailerId || undefined))}
-                />
+                <p className="text-sm">
+                  <Link to="/yards" className="underline decoration-ink/30 underline-offset-4">
+                    Open the warehouse desk
+                  </Link>
+                </p>
               )}
             </li>
           );
@@ -312,84 +308,6 @@ function Books() {
       </ul>
       <Notice text={note} />
     </Panel>
-  );
-}
-
-function Resume({
-  warehouseId,
-  vehicleId,
-  driverId,
-  trailerId,
-  setVehicleId,
-  setDriverId,
-  setTrailerId,
-  onSend,
-}: {
-  shipmentId: string;
-  warehouseId: string;
-  vehicleId: string;
-  driverId: string;
-  trailerId: string;
-  setVehicleId: (id: string) => void;
-  setDriverId: (id: string) => void;
-  setTrailerId: (id: string) => void;
-  onSend: () => void;
-}) {
-  const { company } = useWorld();
-  if (!company) return null;
-  const yard = company.warehouses.find((item) => item.id === warehouseId);
-  const trucks = company.vehicles.filter((vehicle) => vehicle.kind !== "trailer53" && vehicle.status === "idle" && vehicle.zip === yard?.zip);
-  const truck = trucks.find((item) => item.id === vehicleId);
-  const drivers = truck ? pilotsFor(company, truck) : [];
-  const trailers = truck && isTractor(truck.kind) ? trailersFor(company, truck).filter((item) => item.zip === yard?.zip) : [];
-  return (
-    <div className="grid gap-2 sm:grid-cols-2">
-      <Field label="Truck at this warehouse">
-        <Select
-          value={vehicleId}
-          onChange={(event) => {
-            setVehicleId(event.target.value);
-            setDriverId("");
-            setTrailerId("");
-          }}
-        >
-          <option value="">Choose</option>
-          {trucks.map((item) => (
-            <option key={item.id} value={item.id}>
-              {KIND_INFO[item.kind].label}
-            </option>
-          ))}
-        </Select>
-      </Field>
-      {truck && isTractor(truck.kind) ? (
-        <Field label="Trailer">
-          <Select value={trailerId} onChange={(event) => setTrailerId(event.target.value)}>
-            <option value="">Choose</option>
-            {trailers.map((item) => (
-              <option key={item.id} value={item.id}>
-                {KIND_INFO[item.kind].label}
-              </option>
-            ))}
-          </Select>
-        </Field>
-      ) : null}
-      <Field label="Driver">
-        <Select value={driverId} onChange={(event) => setDriverId(event.target.value)}>
-          <option value="">Choose</option>
-          {drivers.map((driver) => (
-            <option key={driver.id} value={driver.id}>
-              {driver.name}
-              {driver.cdl ? " · CDL" : ""}
-            </option>
-          ))}
-        </Select>
-      </Field>
-      <div className="flex items-end">
-        <Button onClick={onSend} disabled={!vehicleId || !driverId || (truck != null && isTractor(truck.kind) && !trailerId)}>
-          Send to the customer
-        </Button>
-      </div>
-    </div>
   );
 }
 
@@ -403,7 +321,7 @@ function Booking({ job, onRoute, onClose }: { job: MarketJob; onRoute: (points: 
 
   useEffect(() => {
     if (!company) return;
-    const truck = company.vehicles.find((item) => item.kind !== "trailer53" && item.status === "idle" && !item.shipmentId);
+    const truck = company.vehicles.find((item) => item.kind !== "trailer53" && item.status === "idle" && !isCommitted(item));
     if (!truck) return;
     const pilots = pilotsFor(company, truck);
     const trailer = isTractor(truck.kind) ? trailersFor(company, truck)[0] : undefined;
@@ -413,7 +331,7 @@ function Booking({ job, onRoute, onClose }: { job: MarketJob; onRoute: (points: 
     setNote(null);
   }, [job.id, company]);
 
-  const trucks = company?.vehicles.filter((vehicle) => vehicle.kind !== "trailer53" && vehicle.status === "idle" && !vehicle.shipmentId) ?? [];
+  const trucks = company?.vehicles.filter((vehicle) => vehicle.kind !== "trailer53" && vehicle.status === "idle" && !isCommitted(vehicle)) ?? [];
   const vehicle = trucks.find((item) => item.id === vehicleId) ?? null;
   const drivers = company && vehicle ? pilotsFor(company, vehicle) : [];
   const trailers = company && vehicle && isTractor(vehicle.kind) ? trailersFor(company, vehicle) : [];
@@ -538,6 +456,11 @@ function Booking({ job, onRoute, onClose }: { job: MarketJob; onRoute: (points: 
           {warning}
         </p>
       ))}
+      {quote?.ok && vehicle && job.miles <= 400 && company.warehouses.some((yard) => yard.zip === vehicle.zip) ? (
+        <p className="mt-3 text-sm text-ink/60">
+          Bring it to the warehouse if you want to unload it there and deliver it later, with other freight. The customer’s day still runs.
+        </p>
+      ) : null}
       <div className="mt-3 flex flex-wrap gap-2">
         <Button
           disabled={job.mode !== "road" || !quote?.ok}
@@ -549,6 +472,18 @@ function Booking({ job, onRoute, onClose }: { job: MarketJob; onRoute: (points: 
         >
           {quote?.warnings.length ? "Accept anyway" : "Accept shipment"}
         </Button>
+        {quote?.ok && vehicle && job.miles <= 400 && company.warehouses.some((yard) => yard.zip === vehicle.zip) ? (
+          <Button
+            variant="quiet"
+            onClick={() => {
+              const error = accept(job.id, vehicleId, driverId, trailerId || undefined, true, true);
+              if (error && error !== "CONFIRM") setNote(error);
+              else setNote(null);
+            }}
+          >
+            Bring it to {labelPlace(vehicle.zip)}
+          </Button>
+        ) : null}
         <Button variant="quiet" onClick={onClose}>
           Leave it on the board
         </Button>

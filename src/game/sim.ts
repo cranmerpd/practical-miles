@@ -352,6 +352,14 @@ export function dockWait(simHours: number, zip: string): number {
   return 24 - hour + 8;
 }
 
+export function hoursUntilMorning(simHours: number, zip: string): number {
+  const place = lookupZip(zip);
+  if (!place) return 0;
+  const hour = localHour(simHours, zoneOffset(place.state, place.lon, simHours));
+  if (hour < 8) return 8 - hour;
+  return 24 - hour + 8;
+}
+
 export function dueAtFor(simHours: number, miles: number, toZip: string): number {
   const drive = dutyHours(driveHoursFor(Math.max(1, miles), 60, 45));
   const extraDays = miles < 120 ? 1 : miles < 400 ? 2 : miles < 900 ? 3 : 4;
@@ -391,6 +399,17 @@ export function capacityOf(vehicle: Vehicle, vehicles: Vehicle[]): { payload: nu
 
 export function isTractor(kind: Kind): boolean {
   return kind === "daycab" || kind === "sleeper";
+}
+
+export function isCommitted(vehicle: Vehicle): boolean {
+  return Boolean(vehicle.shipmentId) || vehicle.legs.some((leg) => Boolean(leg.shipmentId));
+}
+
+export function shipmentsOn(company: Company, vehicle: Vehicle): Shipment[] {
+  const ids = new Set<string>();
+  if (vehicle.shipmentId) ids.add(vehicle.shipmentId);
+  for (const leg of vehicle.legs) if (leg.shipmentId) ids.add(leg.shipmentId);
+  return company.shipments.filter((item) => ids.has(item.id) && item.status !== "done" && item.status !== "stored");
 }
 
 export function warehouseAt(company: Company, zip: string): Warehouse | undefined {
@@ -794,7 +813,184 @@ export function quoteJob(
   return { ok: true, deadhead: dead.miles, loaded: loadedPlan.miles, hours, fuelCost, profit, warnings, points };
 }
 
-export function acceptJob(world: World, jobId: string, vehicleId: string, driverId: string, trailerId?: string, force = false): string | null {
+export type LoopStop = {
+  shipmentId: string;
+  zip: string;
+  miles: number;
+  arriveAt: number;
+  late: boolean;
+  balance: number;
+};
+
+export type LoopPreview = {
+  ok: boolean;
+  reason: string;
+  stops: LoopStop[];
+  miles: number;
+  hours: number;
+  fuelCost: number;
+  balance: number;
+  afterFuel: number;
+  weight: number;
+  cube: number;
+  payload: number;
+  cubeCap: number;
+  backAt: number;
+  points: MapPoint[];
+};
+
+export function previewLoop(
+  world: World,
+  vehicle: Vehicle,
+  driver: Driver,
+  shipmentIds: string[],
+  departAt: number,
+  trailer?: Vehicle,
+): LoopPreview {
+  const blank = (): LoopPreview => ({
+    ok: false,
+    reason: "",
+    stops: [],
+    miles: 0,
+    hours: 0,
+    fuelCost: 0,
+    balance: 0,
+    afterFuel: 0,
+    weight: 0,
+    cube: 0,
+    payload: 0,
+    cubeCap: 0,
+    backAt: departAt,
+    points: [],
+  });
+  const company = world.company;
+  if (!company) return { ...blank(), reason: "No company." };
+  const yard = warehouseAt(company, vehicle.zip);
+  if (!yard) return { ...blank(), reason: "The truck is not at your warehouse." };
+  const spec = KIND_INFO[vehicle.kind];
+  if (spec.cdl && !driver.cdl) return { ...blank(), reason: "That tractor needs a CDL driver." };
+  if (isTractor(vehicle.kind)) {
+    if (!trailer) return { ...blank(), reason: "Pick a trailer." };
+    if (trailer.zip !== yard.zip || trailer.kind !== "trailer53") return { ...blank(), reason: "The trailer has to be parked at this warehouse." };
+  }
+  const cap = isTractor(vehicle.kind)
+    ? { payload: KIND_INFO.trailer53.payload, cube: KIND_INFO.trailer53.cube }
+    : { payload: spec.payload, cube: spec.cube };
+  if (!shipmentIds.length) return { ...blank(), reason: "Put at least one load on the truck.", payload: cap.payload, cubeCap: cap.cube };
+  const list: Shipment[] = [];
+  for (const id of shipmentIds) {
+    const shipment = company.shipments.find((item) => item.id === id);
+    if (!shipment || shipment.status !== "stored" || shipment.warehouseId !== yard.id) {
+      return { ...blank(), reason: "One of those loads is not on this floor.", payload: cap.payload, cubeCap: cap.cube };
+    }
+    list.push(shipment);
+  }
+  const weight = list.reduce((sum, item) => sum + item.weight, 0);
+  const cube = list.reduce((sum, item) => sum + item.cube, 0);
+  if (weight > cap.payload || cube > cap.cube) {
+    return { ...blank(), reason: "That is more than this truck can carry.", weight, cube, payload: cap.payload, cubeCap: cap.cube };
+  }
+  let cursor = yard.zip;
+  let when = departAt;
+  let miles = 0;
+  const stops: LoopStop[] = [];
+  const points: MapPoint[] = [];
+  for (const shipment of list) {
+    const plan = planRoad(cursor, shipment.toZip);
+    if (!plan) return { ...blank(), reason: "No highway path for one of the stops.", weight, cube, payload: cap.payload, cubeCap: cap.cube };
+    const drive = dutyHours(driveHoursFor(plan.miles, spec.cruise || 60, driver.skill));
+    const arriveAt = when + drive + dockWait(when + drive, shipment.toZip);
+    stops.push({
+      shipmentId: shipment.id,
+      zip: shipment.toZip,
+      miles: plan.miles,
+      arriveAt,
+      late: arriveAt > shipment.dueAt + 0.05,
+      balance: Math.max(0, shipment.pay - shipment.deposit),
+    });
+    miles += plan.miles;
+    if (points.length === 0) points.push(...plan.points);
+    else points.push(...plan.points.slice(1));
+    cursor = shipment.toZip;
+    when = arriveAt;
+  }
+  const back = planRoad(cursor, yard.zip);
+  if (!back) return { ...blank(), reason: "No path back to the warehouse.", weight, cube, payload: cap.payload, cubeCap: cap.cube };
+  miles += back.miles;
+  if (points.length === 0) points.push(...back.points);
+  else points.push(...back.points.slice(1));
+  const backAt = when + dutyHours(driveHoursFor(back.miles, spec.cruise || 60, driver.skill));
+  const fuelCost = (miles / (spec.mpg || 7)) * world.diesel;
+  const balance = stops.reduce((sum, stop) => sum + stop.balance, 0);
+  return {
+    ok: true,
+    reason: "",
+    stops,
+    miles,
+    hours: backAt - departAt,
+    fuelCost,
+    balance,
+    afterFuel: balance - fuelCost,
+    weight,
+    cube,
+    payload: cap.payload,
+    cubeCap: cap.cube,
+    backAt,
+    points,
+  };
+}
+
+export function dispatchLoop(
+  world: World,
+  warehouseId: string,
+  vehicleId: string,
+  driverId: string,
+  shipmentIds: string[],
+  trailerId?: string,
+  atDawn = false,
+): string | null {
+  const company = world.company;
+  if (!company || company.closed) return "The company is closed.";
+  const yard = company.warehouses.find((item) => item.id === warehouseId);
+  const vehicle = company.vehicles.find((item) => item.id === vehicleId);
+  const driver = company.drivers.find((item) => item.id === driverId);
+  const trailer = trailerId ? company.vehicles.find((item) => item.id === trailerId) : undefined;
+  if (!yard || !vehicle || !driver) return "Pick a warehouse, a truck, and a driver.";
+  if (vehicle.kind === "trailer53") return "A trailer does not drive itself.";
+  if (vehicle.status !== "idle" || vehicle.zip !== yard.zip || isCommitted(vehicle)) return "That truck is not free at this warehouse.";
+  if (driver.vehicleId && driver.vehicleId !== vehicle.id) return "That driver is already on a truck.";
+  if (!driver.vehicleId && driver.warehouseId !== yard.id) return "That driver is not at this warehouse.";
+  const departAt = atDawn ? world.simHours + hoursUntilMorning(world.simHours, yard.zip) : world.simHours + 0.05;
+  const preview = previewLoop(world, vehicle, driver, shipmentIds, departAt, trailer);
+  if (!preview.ok) return preview.reason || "That loop does not work.";
+  driver.vehicleId = vehicle.id;
+  driver.warehouseId = null;
+  vehicle.driverId = driver.id;
+  if (trailer) {
+    vehicle.coupledTrailerId = trailer.id;
+    trailer.coupledTrailerId = vehicle.id;
+  }
+  const legs: Leg[] = [];
+  for (const id of shipmentIds) {
+    const shipment = company.shipments.find((item) => item.id === id);
+    if (!shipment) return "One of those loads is gone.";
+    shipment.status = "booked";
+    shipment.vehicleId = vehicle.id;
+    shipment.warehouseId = undefined;
+    legs.push({ kind: "loaded", toZip: shipment.toZip, shipmentId: id });
+  }
+  legs.push({ kind: "reposition", toZip: yard.zip });
+  vehicle.shipmentId = shipmentIds[0] ?? null;
+  vehicle.legs = legs;
+  vehicle.departAt = departAt;
+  vehicle.status = "idle";
+  armLeg(vehicle);
+  const count = shipmentIds.length === 1 ? "1 delivery" : `${shipmentIds.length} deliveries`;
+  log(world, `${KIND_INFO[vehicle.kind].label} loaded with ${count} out of ${labelPlace(yard.zip)}. It comes back here when the loop is done.`, "good");
+  return null;
+}
+
+export function acceptJob(world: World, jobId: string, vehicleId: string, driverId: string, trailerId?: string, force = false, stage = false): string | null {
   const company = world.company;
   if (!company || company.closed) return "The company is closed.";
   const job = world.jobs.find((item) => item.id === jobId);
@@ -805,7 +1001,9 @@ export function acceptJob(world: World, jobId: string, vehicleId: string, driver
   if (vehicle.status !== "idle") return "That truck is already out.";
   const quote = quoteJob(world, job, vehicle, driver, trailer);
   if (!quote.ok) return quote.reason || "That load does not work.";
-  if (quote.warnings.length && !force) return "CONFIRM";
+  const home = stage ? warehouseAt(company, vehicle.zip) : undefined;
+  if (stage && !home) return "Bring a load home from a truck parked at your warehouse.";
+  if (quote.warnings.length && !force && !stage) return "CONFIRM";
   const deposit = Math.round(job.pay * 0.1);
   const shipment: Shipment = {
     id: uid(world, "ship"),
@@ -839,15 +1037,20 @@ export function acceptJob(world: World, jobId: string, vehicleId: string, driver
     trailer.coupledTrailerId = vehicle.id;
   }
   const hookedAt = legs.length ? legs[legs.length - 1].toZip : vehicle.zip;
-  if (hookedAt !== job.fromZip) {
-    legs.push({ kind: "pickup", toZip: job.fromZip, shipmentId: shipment.id });
+  if (home) {
+    if (hookedAt !== job.fromZip) legs.push({ kind: "pickup", toZip: job.fromZip, shipmentId: shipment.id });
+    legs.push({ kind: "yard", toZip: home.zip, shipmentId: shipment.id, warehouseId: home.id });
+    legs.push({ kind: "loaded", toZip: job.toZip, shipmentId: shipment.id });
+  } else {
+    if (hookedAt !== job.fromZip) legs.push({ kind: "pickup", toZip: job.fromZip, shipmentId: shipment.id });
+    legs.push({ kind: "loaded", toZip: job.toZip, shipmentId: shipment.id });
   }
-  legs.push({ kind: "loaded", toZip: job.toZip, shipmentId: shipment.id });
   vehicle.legs = legs;
   vehicle.departAt = world.simHours + 0.05;
   vehicle.status = "idle";
   armLeg(vehicle);
   pushCash(companyWorld(world), company, deposit, `${labelPlace(job.fromZip)} to ${labelPlace(job.toZip)} accepted. The customer paid ${money(deposit)}.`, "good");
+  if (home) log(world, `The truck will bring it to ${labelPlace(home.zip)} instead of the customer. The due day still runs.`, "info");
   return null;
 }
 
@@ -874,8 +1077,9 @@ export function cancelShipment(world: World, shipmentId: string): string | null 
   const company = world.company;
   if (!company) return "No company.";
   const shipment = company.shipments.find((item) => item.id === shipmentId);
-  const vehicle = company.vehicles.find((item) => item.shipmentId === shipmentId);
+  const vehicle = company.vehicles.find((item) => item.shipmentId === shipmentId || item.legs.some((leg) => leg.shipmentId === shipmentId));
   if (!shipment || !vehicle) return "That load is not on a truck.";
+  if (vehicle.legs.some((leg) => leg.shipmentId && leg.shipmentId !== shipmentId)) return "That truck is carrying more than this load.";
   if (shipment.status === "rolling" || (vehicle.departAt != null && world.simHours >= vehicle.departAt)) {
     return "The truck is already moving.";
   }
@@ -1074,7 +1278,7 @@ export function reposition(world: World, vehicleId: string, toZip: string, drive
   const company = world.company;
   if (!company || company.closed) return "The company is closed.";
   const vehicle = company.vehicles.find((item) => item.id === vehicleId);
-  if (!vehicle || vehicle.status !== "idle" || vehicle.shipmentId) return "That truck is not free.";
+  if (!vehicle || vehicle.status !== "idle" || isCommitted(vehicle)) return "That truck is not free.";
   if (vehicle.kind === "trailer53") return "A trailer does not drive itself.";
   const place = lookupZip(toZip);
   if (!place) return "Unknown ZIP code.";
@@ -1096,9 +1300,12 @@ export function divertToYard(world: World, shipmentId: string, warehouseId: stri
   const company = world.company;
   if (!company) return "No company.";
   const shipment = company.shipments.find((item) => item.id === shipmentId);
-  const vehicle = company.vehicles.find((item) => item.shipmentId === shipmentId);
+  const vehicle = company.vehicles.find((item) => item.shipmentId === shipmentId || item.legs.some((leg) => leg.shipmentId === shipmentId));
   const yard = company.warehouses.find((item) => item.id === warehouseId);
   if (!shipment || !vehicle || !yard) return "Cannot divert that load.";
+  if (vehicle.legs.some((item) => item.kind === "loaded" && item.shipmentId && item.shipmentId !== shipmentId)) {
+    return "This truck is on a delivery loop. Bring the whole loop back instead of diverting one stop.";
+  }
   if (shipment.status === "stored") return "It is already in a warehouse.";
   const leg = vehicle.legs[0];
   if (!leg || (leg.kind !== "loaded" && leg.kind !== "pickup")) return "The truck is not on that load yet.";
@@ -1195,11 +1402,11 @@ function finishDelivery(world: World, company: Company, shipment: Shipment, vehi
   if (payout > 0) pushCash(world, company, payout, `Delivery paid ${money(payout)}.`, "good");
   else log(world, "Delivery finished with nothing left of the balance.", "bad");
   shipment.status = "done";
-  vehicle.shipmentId = null;
-  vehicle.legs = [];
-  const yard = warehouseAt(company, vehicle.zip);
-  if (yard) releaseCrew(company, vehicle, true);
-  else vehicle.status = "idle";
+  shipment.vehicleId = undefined;
+  if (vehicle.shipmentId === shipment.id) {
+    const next = vehicle.legs.find((leg) => leg.shipmentId);
+    vehicle.shipmentId = next?.shipmentId ?? null;
+  }
   const done = company.shipments.filter((item) => item.status === "done");
   if (done.length > 8) {
     const drop = new Set(done.slice(0, done.length - 8).map((item) => item.id));
@@ -1254,11 +1461,17 @@ function arrive(world: World, company: Company, vehicle: Vehicle) {
   }
   if (leg.kind === "loaded" && leg.shipmentId) {
     const shipment = company.shipments.find((item) => item.id === leg.shipmentId);
-    if (shipment) {
-      shipment.status = "done";
-      finishDelivery(world, company, shipment, vehicle);
+    if (shipment && shipment.status !== "done") finishDelivery(world, company, shipment, vehicle);
+    if (!vehicle.legs.length) {
+      vehicle.shipmentId = null;
+      vehicle.status = "idle";
+      vehicle.departAt = null;
+      if (warehouseAt(company, vehicle.zip)) releaseCrew(company, vehicle, true);
       return;
     }
+    armLeg(vehicle);
+    if (vehicle.routeMiles <= 0) arrive(world, company, vehicle);
+    return;
   }
   if (leg.kind === "reposition") {
     vehicle.status = "idle";
@@ -1282,8 +1495,10 @@ function arrive(world: World, company: Company, vehicle: Vehicle) {
 function moveVehicle(world: World, company: Company, vehicle: Vehicle, dt: number) {
   if (vehicle.status === "idle" && vehicle.legs.length && vehicle.departAt != null && world.simHours >= vehicle.departAt) {
     vehicle.status = "enroute";
-    const shipment = vehicle.shipmentId ? company.shipments.find((item) => item.id === vehicle.shipmentId) : undefined;
-    if (shipment && shipment.status === "booked") shipment.status = "rolling";
+    for (const shipment of company.shipments) {
+      const onIt = shipment.id === vehicle.shipmentId || vehicle.legs.some((leg) => leg.shipmentId === shipment.id);
+      if (onIt && shipment.status === "booked") shipment.status = "rolling";
+    }
   }
   if (vehicle.status !== "enroute" && vehicle.status !== "inbound") return;
   if (vehicle.restUntil != null && world.simHours < vehicle.restUntil) return;

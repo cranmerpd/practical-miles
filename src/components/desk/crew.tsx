@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { labelPlace } from "@/game/geo";
-import { gameDate, KIND_INFO, money, type Company, type Driver, type Vehicle } from "@/game/sim";
+import { gameDate, isCommitted, KIND_INFO, money, type Company, type Driver, type Vehicle } from "@/game/sim";
 import { useDesk } from "@/game/store";
 import { Button } from "@/components/ui/button";
 import { Notice, Panel, useWorld } from "@/components/desk/bits";
@@ -18,7 +18,7 @@ function trucksTheyCanTake(company: Company, driver: Driver): Vehicle[] {
   if (!yard) return [];
   return company.vehicles.filter((vehicle) => {
     if (vehicle.zip !== yard.zip || vehicle.kind === "trailer53") return false;
-    if (vehicle.driverId || vehicle.status !== "idle" || vehicle.shipmentId) return false;
+    if (vehicle.driverId || vehicle.status !== "idle" || isCommitted(vehicle)) return false;
     return !KIND_INFO[vehicle.kind].cdl || driver.cdl;
   });
 }

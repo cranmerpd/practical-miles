@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { labelPlace, planRoad } from "@/game/geo";
-import { isTractor, KIND_INFO, money, type Listing, type Vehicle } from "@/game/sim";
+import { isCommitted, isTractor, KIND_INFO, money, type Listing, type Vehicle } from "@/game/sim";
 import { useDesk } from "@/game/store";
 import { Button } from "@/components/ui/button";
 import { Field, Select } from "@/components/ui/input";
@@ -58,7 +58,7 @@ function Owned({ vehicle }: { vehicle: Vehicle }) {
   const spec = KIND_INFO[vehicle.kind];
   const driver = company.drivers.find((item) => item.id === vehicle.driverId);
   const atYard = company.warehouses.some((yard) => yard.zip === vehicle.zip);
-  const idle = vehicle.status === "idle" && !vehicle.shipmentId;
+  const idle = vehicle.status === "idle" && !isCommitted(vehicle);
   const repairCost = Math.round(((100 - vehicle.condition) / 100) * 0.1 * vehicle.price);
   const drivers = company.drivers.filter((item) => !item.vehicleId && item.warehouseId && company.warehouses.some((yard) => yard.id === item.warehouseId && yard.zip === vehicle.zip));
   const eligible = drivers.filter((item) => !spec.cdl || item.cdl);

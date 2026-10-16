@@ -40,6 +40,7 @@ function TripCard({ trip, diesel, simHours }: { trip: TripRead; diesel: number; 
     <Panel title={spec.label} extra={<span className="text-sm text-ink/60">{trip.leg}</span>}>
       <p className="text-sm text-ink/70">
         Toward {trip.heading}. {Math.max(1, Math.round(trip.milesLeft)).toLocaleString("en-US")} miles left.
+        {trip.stopsLeft > 1 ? ` ${trip.stopsLeft} deliveries still on the truck.` : ""}
         {trip.driverName ? ` ${trip.driverName} is driving.` : " No driver on it."}
       </p>
       <p className="mt-2 text-sm text-ink/70">
@@ -53,7 +54,7 @@ function TripCard({ trip, diesel, simHours }: { trip: TripRead; diesel: number; 
       </p>
       {trip.pay > 0 ? (
         <dl className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-          <Cell label="Customer pays" value={money(trip.pay)} />
+          <Cell label={trip.stopsLeft > 1 ? "Still on the truck" : "Customer pays"} value={money(trip.pay)} />
           <Cell label="Already in the bank" value={money(trip.deposit)} />
           <Cell label="Still owed" value={money(trip.balance)} />
           <Cell label="Fuel still to burn" value={money(trip.burn)} alert={short} />

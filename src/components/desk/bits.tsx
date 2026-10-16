@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { useDesk } from "@/game/store";
 import { lookupZip, searchPlaces } from "@/game/geo";
-import { formatWhen, gameDate } from "@/game/sim";
+import { formatWhen, gameDate, localDay } from "@/game/sim";
 import { Input } from "@/components/ui/input";
 
 export function useWorld() {
@@ -43,6 +43,16 @@ export function whenLabel(hours: number): string {
   const date = gameDate(hours);
   const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
   return `${days[date.getUTCDay()]}, ${formatWhen(hours)}, ${date.getUTCFullYear()}`;
+}
+
+export function stamp(simHours: number, zip: string): string {
+  const day = localDay(simHours, zip);
+  return `${day.short}, ${day.clock}`;
+}
+
+export function dockLine(rollup: number, unloadAt: number, zip: string, closed: boolean): string {
+  if (!closed) return `Arrives ${stamp(rollup, zip)} local. Dock is open.`;
+  return `Arrives ${stamp(rollup, zip)} local. Dock is closed. Unloads ${stamp(unloadAt, zip)}.`;
 }
 
 export function hoursLeft(h: number): string {

@@ -19,7 +19,7 @@ import {
 import { useDesk } from "@/game/store";
 import { Button } from "@/components/ui/button";
 import { Field, Select } from "@/components/ui/input";
-import { cubes, hoursLeft, Notice, Panel, pounds, useWorld } from "@/components/desk/bits";
+import { cubes, dockLine, hoursLeft, Notice, Panel, pounds, stamp, useWorld } from "@/components/desk/bits";
 
 type SortKey = "pay" | "miles" | "due" | "weight" | "rate";
 
@@ -427,6 +427,7 @@ function Booking({ job, onRoute, onClose }: { job: MarketJob; onRoute: (points: 
         </div>
       )}
       {quote?.ok ? (
+        <>
         <dl className="mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">
           <div>
             <dt className="text-ink/60">Empty miles</dt>
@@ -449,6 +450,13 @@ function Booking({ job, onRoute, onClose }: { job: MarketJob; onRoute: (points: 
             <dd className={`tabular-nums font-medium ${quote.profit < 0 ? "text-rust" : "text-pine"}`}>{money(quote.profit)}</dd>
           </div>
         </dl>
+        <p className={`mt-3 text-sm ${quote.dockClosed ? "text-rust" : "text-pine"}`}>{dockLine(quote.arriveAt, quote.unloadAt, job.toZip, quote.dockClosed)}</p>
+        {quote.stageAt != null && job.miles <= 400 && vehicle && company.warehouses.some((yard) => yard.zip === vehicle.zip) ? (
+          <p className="mt-3 text-sm text-ink/70">
+            Bringing it home instead gets the truck back to {labelPlace(vehicle.zip)} about {stamp(quote.stageAt, vehicle.zip)}. The customer dock is not on that trip.
+          </p>
+        ) : null}
+        </>
       ) : quote?.reason ? (
         <p className="mt-3 text-sm text-rust">{quote.reason}</p>
       ) : null}

@@ -188,6 +188,10 @@ export type Quote = {
   profit: number;
   warnings: string[];
   points: MapPoint[];
+  arriveAt: number;
+  unloadAt: number;
+  dockClosed: boolean;
+  stageAt: number | null;
 };
 
 const FIRST = ["Ada", "Miles", "Ruth", "Owen", "Pearl", "Ned", "Ida", "Cal", "June", "Hank", "Lois", "Earl", "Faye", "Roy", "Nell", "Gus"];
@@ -265,11 +269,13 @@ export function wageFor(skill: number, cdl: boolean): number {
   return cdl ? Math.round(base * 1.3) : base;
 }
 
-export function dutyHours(driveHours: number): number {
+export function dutyHours(driveHours: number, driven = 0, broke = false): number {
+  return rollDuty(driveHours, driven, broke).elapsed;
+}
+
+export function rollDuty(driveHours: number, driven = 0, broke = false): { elapsed: number; driven: number; broke: boolean } {
   let left = Math.max(0, driveHours);
   let elapsed = 0;
-  let driven = 0;
-  let broke = false;
   let guard = 0;
   while (left > 0.001 && guard++ < 100) {
     const room = (broke ? 11 : 8) - driven;
@@ -299,7 +305,7 @@ export function dutyHours(driveHours: number): number {
       broke = false;
     }
   }
-  return elapsed;
+  return { elapsed, driven, broke };
 }
 
 function skillSpeed(skill: number): number {
@@ -843,35 +849,48 @@ export function quoteJob(
 ): Quote {
   const company = world.company;
   const warnings: string[] = [];
-  if (!company) return { ok: false, reason: "No company.", deadhead: 0, loaded: 0, hours: 0, fuelCost: 0, profit: 0, warnings, points: [] };
-  if (job && "mode" in job && job.mode !== "road") {
-    return { ok: false, reason: "You cannot book air or sea freight yet.", deadhead: 0, loaded: 0, hours: 0, fuelCost: 0, profit: 0, warnings, points: [] };
-  }
+  const fail = (reason: string, extra: Partial<Quote> = {}): Quote => ({
+    ok: false,
+    reason,
+    deadhead: 0,
+    loaded: 0,
+    hours: 0,
+    fuelCost: 0,
+    profit: 0,
+    warnings,
+    points: [],
+    arriveAt: 0,
+    unloadAt: 0,
+    dockClosed: false,
+    stageAt: null,
+    ...extra,
+  });
+  if (!company) return fail("No company.");
+  if (job && "mode" in job && job.mode !== "road") return fail("You cannot book air or sea freight yet.");
   const spec = KIND_INFO[vehicle.kind];
-  if (spec.cdl && !driver.cdl) {
-    return { ok: false, reason: "That tractor needs a CDL driver.", deadhead: 0, loaded: 0, hours: 0, fuelCost: 0, profit: 0, warnings, points: [] };
-  }
+  if (spec.cdl && !driver.cdl) return fail("That tractor needs a CDL driver.");
   const fromZip = "fromZip" in job ? job.fromZip : "";
   const stops = [vehicle.zip];
   if (isTractor(vehicle.kind)) {
-    if (!trailer) return { ok: false, reason: "Pick a trailer.", deadhead: 0, loaded: 0, hours: 0, fuelCost: 0, profit: 0, warnings, points: [] };
+    if (!trailer) return fail("Pick a trailer.");
     if (trailer.zip !== vehicle.zip) stops.push(trailer.zip);
   }
   stops.push(fromZip);
   const dead = chainPlans(stops);
   const loadedPlan = planRoad(fromZip, job.toZip);
-  if (!dead || !loadedPlan) {
-    return { ok: false, reason: "No highway path between those ZIP codes.", deadhead: 0, loaded: 0, hours: 0, fuelCost: 0, profit: 0, warnings, points: [] };
-  }
+  if (!dead || !loadedPlan) return fail("No highway path between those ZIP codes.");
   const cap = isTractor(vehicle.kind)
     ? { payload: KIND_INFO[trailer!.kind].payload, cube: KIND_INFO[trailer!.kind].cube }
     : { payload: spec.payload, cube: spec.cube };
   if (job.weight > cap.payload || job.cube > cap.cube) {
-    return { ok: false, reason: "The freight does not fit this truck.", deadhead: dead.miles, loaded: loadedPlan.miles, hours: 0, fuelCost: 0, profit: 0, warnings, points: [] };
+    return fail("The freight does not fit this truck.", { deadhead: dead.miles, loaded: loadedPlan.miles });
   }
   const miles = dead.miles + loadedPlan.miles;
-  const drive = driveHoursFor(miles, spec.cruise || 60, driver.skill);
-  const hours = dutyHours(drive) + dockWait(world.simHours + dutyHours(drive), job.toZip);
+  const clock = rollDuty(driveHoursFor(miles, spec.cruise || 60, driver.skill), driver.driveToday ?? 0, Boolean(driver.breakTaken));
+  const arriveAt = world.simHours + clock.elapsed;
+  const wait = dockWait(arriveAt, job.toZip);
+  const unloadAt = arriveAt + wait;
+  const hours = unloadAt - world.simHours;
   const mpg = spec.mpg || 7;
   const gallons = miles / mpg;
   const fuelCost = gallons * world.diesel;
@@ -882,14 +901,26 @@ export function quoteJob(
   if (company.cash + deposit < fuelCost) warnings.push("Fuel on the road can push the bank account negative.");
   if (job.cargoValue > company.cash + pay) warnings.push("If this freight is damaged, the claim can be larger than your cash plus the payout.");
   const points = dead.points.concat(loadedPlan.points.slice(1));
-  return { ok: true, deadhead: dead.miles, loaded: loadedPlan.miles, hours, fuelCost, profit, warnings, points };
+  const home = warehouseAt(company, vehicle.zip);
+  let stageAt: number | null = null;
+  if (home) {
+    const back = planRoad(fromZip, home.zip);
+    if (back) {
+      const stageMiles = dead.miles + back.miles;
+      const stage = rollDuty(driveHoursFor(stageMiles, spec.cruise || 60, driver.skill), driver.driveToday ?? 0, Boolean(driver.breakTaken));
+      stageAt = world.simHours + stage.elapsed;
+    }
+  }
+  return { ok: true, deadhead: dead.miles, loaded: loadedPlan.miles, hours, fuelCost, profit, warnings, points, arriveAt, unloadAt, dockClosed: wait > 0.05, stageAt };
 }
 
 export type LoopStop = {
   shipmentId: string;
   zip: string;
   miles: number;
+  rollup: number;
   arriveAt: number;
+  dockClosed: boolean;
   late: boolean;
   balance: number;
 };
@@ -965,18 +996,34 @@ export function previewLoop(
   let cursor = yard.zip;
   let when = departAt;
   let miles = 0;
+  let driven = driver.driveToday ?? 0;
+  let broke = Boolean(driver.breakTaken);
+  if (departAt - world.simHours > 2) {
+    driven = 0;
+    broke = false;
+  }
   const stops: LoopStop[] = [];
   const points: MapPoint[] = [];
   for (const shipment of list) {
     const plan = planRoad(cursor, shipment.toZip);
     if (!plan) return { ...blank(), reason: "No highway path for one of the stops.", weight, cube, payload: cap.payload, cubeCap: cap.cube };
-    const drive = dutyHours(driveHoursFor(plan.miles, spec.cruise || 60, driver.skill));
-    const arriveAt = when + drive + dockWait(when + drive, shipment.toZip);
+    const leg = rollDuty(driveHoursFor(plan.miles, spec.cruise || 60, driver.skill), driven, broke);
+    driven = leg.driven;
+    broke = leg.broke;
+    const rollup = when + leg.elapsed;
+    const wait = dockWait(rollup, shipment.toZip);
+    const arriveAt = rollup + wait;
+    if (wait > 2) {
+      driven = 0;
+      broke = false;
+    }
     stops.push({
       shipmentId: shipment.id,
       zip: shipment.toZip,
       miles: plan.miles,
+      rollup,
       arriveAt,
+      dockClosed: wait > 0.05,
       late: arriveAt > shipment.dueAt + 0.05,
       balance: Math.max(0, shipment.pay - shipment.deposit),
     });
@@ -991,7 +1038,8 @@ export function previewLoop(
   miles += back.miles;
   if (points.length === 0) points.push(...back.points);
   else points.push(...back.points.slice(1));
-  const backAt = when + dutyHours(driveHoursFor(back.miles, spec.cruise || 60, driver.skill));
+  const homeLeg = rollDuty(driveHoursFor(back.miles, spec.cruise || 60, driver.skill), driven, broke);
+  const backAt = when + homeLeg.elapsed;
   const fuelCost = (miles / (spec.mpg || 7)) * world.diesel;
   const balance = stops.reduce((sum, stop) => sum + stop.balance, 0);
   return {

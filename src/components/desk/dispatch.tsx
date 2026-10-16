@@ -16,7 +16,7 @@ import {
 import { useDesk } from "@/game/store";
 import { Button } from "@/components/ui/button";
 import { Field, Select } from "@/components/ui/input";
-import { cubes, hoursLeft, Notice, Panel, pounds, useWorld } from "@/components/desk/bits";
+import { cubes, dockLine, Notice, Panel, pounds, stamp, useWorld } from "@/components/desk/bits";
 
 export function Dispatch() {
   const { world, company } = useWorld();
@@ -227,6 +227,7 @@ export function Dispatch() {
                           {dueDayLabel(world.simHours, shipment.dueAt, shipment.toZip)}
                           {stop?.late ? " · misses that day" : ""}
                         </p>
+                        {stop ? <p className={`text-sm ${stop.dockClosed ? "text-rust" : "text-pine"}`}>{dockLine(stop.rollup, stop.arriveAt, stop.zip, stop.dockClosed)}</p> : null}
                       </div>
                     </div>
                     <div className="mt-2 flex flex-wrap gap-2 pl-10">
@@ -258,7 +259,7 @@ export function Dispatch() {
         {preview?.ok ? (
           <>
             <p className="text-sm text-ink/70">
-              {preview.stops.map((stop) => labelPlace(stop.zip).split(",")[0]).join(" → ")} → back to {labelPlace(yard.zip).split(",")[0]}. {Math.round(preview.miles).toLocaleString("en-US")} miles. About {hoursLeft(preview.hours)} until the truck is home.
+              {preview.stops.map((stop) => labelPlace(stop.zip).split(",")[0]).join(" → ")} → back to {labelPlace(yard.zip).split(",")[0]}. {Math.round(preview.miles).toLocaleString("en-US")} miles. Home about {stamp(preview.backAt, yard.zip)}.
             </p>
             <dl className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
               <div>

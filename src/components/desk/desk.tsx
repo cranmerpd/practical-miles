@@ -151,6 +151,8 @@ function ClosedScreen() {
 function LiveChrome() {
   const { world, company } = useWorld();
   const paused = useDesk((s) => s.paused);
+  const speed = useDesk((s) => s.speed);
+  const setSpeed = useDesk((s) => s.setSpeed);
   const togglePause = useDesk((s) => s.togglePause);
   const abandon = useDesk((s) => s.abandon);
   const path = useRouterState({ select: (state) => state.location.pathname });
@@ -166,16 +168,31 @@ function LiveChrome() {
             <p className="truncate text-xs font-medium uppercase tracking-widest text-ink/50">{whenLabel(world.simHours)}</p>
             <h1 className="truncate font-display text-2xl uppercase leading-none tracking-tight sm:text-3xl">{company.name}</h1>
           </div>
-          <Button
-            variant={paused ? "primary" : "quiet"}
-            onClick={() => {
-              setSure(false);
-              togglePause();
-            }}
-          >
-            {paused ? <Play className="size-4" aria-hidden /> : <Pause className="size-4" aria-hidden />}
-            {paused ? "Resume" : "Pause"}
-          </Button>
+          <div className="flex shrink-0 items-center gap-1">
+            <div className="flex" role="group" aria-label="Speed">
+              {([1, 2, 4] as const).map((rate) => (
+                <button
+                  key={rate}
+                  type="button"
+                  aria-pressed={speed === rate}
+                  className={`min-h-11 min-w-11 border px-2 text-sm tabular-nums ${rate === 1 ? "" : "-ml-px"} ${speed === rate ? "relative z-10 border-ink bg-ink text-paper" : "border-ink/20 text-ink"}`}
+                  onClick={() => setSpeed(rate)}
+                >
+                  {rate}×
+                </button>
+              ))}
+            </div>
+            <Button
+              variant={paused ? "primary" : "quiet"}
+              onClick={() => {
+                setSure(false);
+                togglePause();
+              }}
+            >
+              {paused ? <Play className="size-4" aria-hidden /> : <Pause className="size-4" aria-hidden />}
+              {paused ? "Resume" : "Pause"}
+            </Button>
+          </div>
         </div>
         <dl className="mx-auto grid max-w-6xl grid-cols-3 border-t border-ink/10">
           <Stat label="Cash" value={money(company.cash)} alert={company.cash < 0} />

@@ -222,6 +222,7 @@ function Books() {
   const { world, company } = useWorld();
   const cancel = useDesk((s) => s.cancel);
   const divert = useDesk((s) => s.divert);
+  const speed = useDesk((s) => s.speed);
   const [note, setNote] = useState<string | null>(null);
   const [yardId, setYardId] = useState("");
   if (!company) return null;
@@ -237,7 +238,7 @@ function Books() {
           );
           const seconds =
             vehicle?.departAt != null && shipment.status === "booked"
-              ? Math.max(0, (vehicle.departAt - world.simHours) * (3600 / SIM_PER_REAL_HOUR))
+              ? Math.max(0, (vehicle.departAt - world.simHours) * (3600 / (SIM_PER_REAL_HOUR * speed)))
               : 0;
           const milesLeft = vehicle && vehicle.routeMiles > 0 ? Math.max(0, vehicle.routeMiles - vehicle.traveled) : null;
           const yard = company.warehouses.find((item) => item.id === shipment.warehouseId);

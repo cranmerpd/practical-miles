@@ -22,14 +22,17 @@ import {
 } from "./sim";
 
 const KEY = "practical-miles-v1";
+export type Speed = 1 | 2 | 4;
 
 type DeskState = {
   world: World;
   paused: boolean;
+  speed: Speed;
   ready: boolean;
   frame: number;
   boot: () => void;
   togglePause: () => void;
+  setSpeed: (speed: Speed) => void;
   tick: (realSeconds: number) => void;
   found: (name: string, zip: string) => string | null;
   holdJob: (id: string | null) => void;
@@ -59,7 +62,8 @@ function persist(world: World, paused: boolean, force = true) {
   if (!force && now - lastPersist < 4000) return;
   lastPersist = now;
   try {
-    localStorage.setItem(KEY, JSON.stringify({ world, paused, savedAt: now }));
+    const speed = useDesk.getState().speed;
+    localStorage.setItem(KEY, JSON.stringify({ world, paused, speed, savedAt: now }));
   } catch {
     /* ignore quota */
   }
@@ -68,6 +72,7 @@ function persist(world: World, paused: boolean, force = true) {
 export const useDesk = create<DeskState>((set, get) => ({
   world: blankWorld(),
   paused: false,
+  speed: 1,
   ready: false,
   frame: 0,
   boot: () => {
@@ -75,14 +80,15 @@ export const useDesk = create<DeskState>((set, get) => ({
     try {
       const raw = localStorage.getItem(KEY);
       if (raw) {
-        const saved = JSON.parse(raw) as { world: World; paused: boolean; savedAt: number };
+        const saved = JSON.parse(raw) as { world: World; paused: boolean; savedAt: number; speed?: number };
         const world = saved.world;
+        const speed: Speed = saved.speed === 2 || saved.speed === 4 ? saved.speed : 1;
         if (!saved.paused && saved.savedAt) {
           const realHours = (Date.now() - saved.savedAt) / 3_600_000;
           advance(world, realHours * SIM_PER_REAL_HOUR);
         }
         warmWorld(world);
-        set({ world, paused: Boolean(saved.paused), ready: true, frame: 1 });
+        set({ world, paused: Boolean(saved.paused), speed, ready: true, frame: 1 });
         persist(world, Boolean(saved.paused));
         return;
       }
@@ -102,10 +108,15 @@ export const useDesk = create<DeskState>((set, get) => ({
     set({ paused, frame: get().frame + 1 });
     persist(get().world, paused);
   },
+  setSpeed: (speed) => {
+    if (speed !== 1 && speed !== 2 && speed !== 4) return;
+    set({ speed, frame: get().frame + 1 });
+    persist(get().world, get().paused);
+  },
   tick: (realSeconds) => {
-    const { paused, world, ready } = get();
+    const { paused, world, ready, speed } = get();
     if (!ready || paused || realSeconds <= 0) return;
-    advance(world, (realSeconds / 3600) * SIM_PER_REAL_HOUR);
+    advance(world, (realSeconds / 3600) * SIM_PER_REAL_HOUR * speed);
     set({ frame: get().frame + 1 });
     persist(world, false, false);
   },

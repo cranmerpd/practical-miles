@@ -1,26 +1,26 @@
-import { useCallback, useEffect, useState } from "react";
-import { Download, Pause, Play, Upload } from "lucide-react";
-import type { MapPoint } from "@/game/geo";
+import { useEffect, useState, type ReactNode } from "react";
+import { Link, Outlet, useRouterState } from "@tanstack/react-router";
+import { Map, Package, Pause, Play, Truck, Users, Warehouse } from "lucide-react";
 import { closureDate, EPOCH, money } from "@/game/sim";
 import { useDesk } from "@/game/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Notice, PlaceSearch, whenLabel, useWorld } from "@/components/desk/bits";
-import { Crew } from "@/components/desk/crew";
-import { Fleet } from "@/components/desk/fleet";
-import { Loads } from "@/components/desk/loads";
 import { MapBoard } from "@/components/desk/map-board";
-import { Yards } from "@/components/desk/yards";
 
-type Tab = "board" | "fleet" | "crew" | "yards";
+const NAV = [
+  { to: "/", label: "Map", icon: Map },
+  { to: "/loads", label: "Loads", icon: Package },
+  { to: "/fleet", label: "Fleet", icon: Truck },
+  { to: "/crew", label: "Crew", icon: Users },
+  { to: "/yards", label: "Yards", icon: Warehouse },
+] as const;
 
-export function Desk() {
+export function DeskShell() {
   const boot = useDesk((s) => s.boot);
   const tick = useDesk((s) => s.tick);
   const ready = useDesk((s) => s.ready);
-  const { world, company } = useWorld();
-  const [route, setRoute] = useState<MapPoint[] | null>(null);
-  const onRoute = useCallback((points: MapPoint[] | null) => setRoute(points), []);
+  const { company } = useWorld();
 
   useEffect(() => {
     boot();
@@ -49,19 +49,16 @@ export function Desk() {
     return () => cancelAnimationFrame(raf);
   }, [boot, tick]);
 
-  return (
-    <main className="mx-auto w-full max-w-7xl px-3 pb-24 pt-4 sm:px-5">
-      {!ready ? (
-        <p className="font-display text-2xl tracking-tight">Opening the desk…</p>
-      ) : !company ? (
-        <OpenScreen />
-      ) : company.closed ? (
-        <ClosedScreen />
-      ) : (
-        <Live route={route} onRoute={onRoute} clock={world.simHours} />
-      )}
-    </main>
-  );
+  if (!ready) {
+    return (
+      <main className="px-4 py-16">
+        <p className="font-display text-4xl uppercase tracking-tight">Opening the desk</p>
+      </main>
+    );
+  }
+  if (!company) return <OpenScreen />;
+  if (company.closed) return <ClosedScreen />;
+  return <LiveChrome />;
 }
 
 function OpenScreen() {
@@ -73,18 +70,18 @@ function OpenScreen() {
   const roads = world.jobs.filter((job) => job.mode === "road").length;
 
   return (
-    <div className="grid items-start gap-4 lg:grid-cols-2">
-      <div className="space-y-4">
-        <p className="text-sm font-medium uppercase tracking-wide text-ink/60">Practical Miles</p>
-        <h1 className="font-display text-3xl tracking-tight">Start with a warehouse and a used truck.</h1>
-        <p className="max-w-prose text-ink/80">
+    <main className="mx-auto grid w-full max-w-6xl items-start gap-8 px-4 py-8 lg:grid-cols-2 lg:py-14">
+      <div className="space-y-6">
+        <p className="text-xs font-medium uppercase tracking-widest text-ink/50">Practical Miles</p>
+        <h1 className="font-display text-5xl uppercase leading-none tracking-tight sm:text-6xl">Start with a warehouse.</h1>
+        <p className="max-w-prose text-ink/75">
           You open with $25,000, reputation 35, and a small building that can hold a little freight. Wealth comes from more trucks and more loads, not from one truck printing money. Planes and ships are out there. They are not yours yet.
         </p>
-        <p className="text-sm tabular-nums text-ink/70">
+        <p className="text-sm tabular-nums text-ink/55">
           {whenLabel(world.simHours)} · diesel ${world.diesel.toFixed(2)}/gal · {roads === 0 ? "the board is filling in" : `${roads} road loads already posted`}
         </p>
         <form
-          className="space-y-3 rounded-lg border border-ink/10 bg-sheet p-4"
+          className="space-y-3 border border-ink/15 bg-sheet p-4"
           onSubmit={(event) => {
             event.preventDefault();
             if (!zip) {
@@ -95,7 +92,7 @@ function OpenScreen() {
           }}
         >
           <label className="block space-y-1 text-sm font-medium">
-            <span>Company name</span>
+            <span className="text-xs uppercase tracking-widest text-ink/55">Company name</span>
             <Input value={name} autoComplete="off" onChange={(event) => setName(event.target.value)} />
           </label>
           <PlaceSearch label="Where is the warehouse?" onPick={setZip} />
@@ -106,7 +103,7 @@ function OpenScreen() {
         </form>
       </div>
       <MapBoard route={null} />
-    </div>
+    </main>
   );
 }
 
@@ -118,14 +115,15 @@ function ClosedScreen() {
   const [note, setNote] = useState<string | null>(null);
   if (!company) return null;
   return (
-    <div className="grid items-start gap-4 lg:grid-cols-2">
-      <div className="space-y-4">
-        <h1 className="font-display text-3xl tracking-tight">{company.name} is closed.</h1>
-        <p className="max-w-prose text-ink/80">
+    <main className="mx-auto grid w-full max-w-6xl items-start gap-8 px-4 py-8 lg:grid-cols-2">
+      <div className="space-y-6">
+        <p className="text-xs font-medium uppercase tracking-widest text-ink/50">Company closed</p>
+        <h1 className="font-display text-5xl uppercase leading-none tracking-tight">{company.name}</h1>
+        <p className="max-w-prose text-ink/75">
           Three months in the red shut the doors. The highways did not stop. Open again with a new name and a new ZIP. You get $25,000, reputation 35, and a small warehouse. The old trucks are gone.
         </p>
         <form
-          className="space-y-3 rounded-lg border border-ink/10 bg-sheet p-4"
+          className="space-y-3 border border-ink/15 bg-sheet p-4"
           onSubmit={(event) => {
             event.preventDefault();
             if (!zip) return;
@@ -133,7 +131,7 @@ function ClosedScreen() {
           }}
         >
           <label className="block space-y-1 text-sm font-medium">
-            <span>New company name</span>
+            <span className="text-xs uppercase tracking-widest text-ink/55">New company name</span>
             <Input value={name} autoComplete="off" onChange={(event) => setName(event.target.value)} />
           </label>
           <PlaceSearch label="New warehouse ZIP or city" onPick={setZip} />
@@ -144,141 +142,114 @@ function ClosedScreen() {
         </form>
       </div>
       <MapBoard route={null} />
-    </div>
+    </main>
   );
 }
 
-function Live({ route, onRoute, clock }: { route: MapPoint[] | null; onRoute: (points: MapPoint[] | null) => void; clock: number }) {
+function LiveChrome() {
   const { world, company } = useWorld();
   const paused = useDesk((s) => s.paused);
   const togglePause = useDesk((s) => s.togglePause);
-  const exportSave = useDesk((s) => s.exportSave);
-  const importSave = useDesk((s) => s.importSave);
-  const [tab, setTab] = useState<Tab>("board");
-  const [note, setNote] = useState<string | null>(null);
+  const path = useRouterState({ select: (state) => state.location.pathname });
   if (!company) return null;
   const closeHours = company.negativeSince == null ? null : (closureDate(company.negativeSince).getTime() - EPOCH) / 3_600_000;
 
   return (
-    <div className="space-y-4">
-      <header className="flex flex-wrap items-end justify-between gap-3 rounded-lg border border-ink/10 bg-sheet p-4">
-        <div className="min-w-0">
-          <p className="text-sm text-ink/60">Practical Miles</p>
-          <h1 className="truncate font-display text-2xl tracking-tight">{company.name}</h1>
-          <p className="text-sm tabular-nums text-ink/70">{whenLabel(clock)}</p>
-        </div>
-        <dl className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
-          <div>
-            <dt className="text-ink/60">Cash</dt>
-            <dd className={`tabular-nums text-lg font-semibold ${company.cash < 0 ? "text-rust" : "text-pine"}`}>{money(company.cash)}</dd>
+    <div className="min-h-screen">
+      <header className="sticky top-0 z-30 border-b border-ink/15 bg-paper/95 backdrop-blur">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3">
+          <div className="min-w-0">
+            <p className="truncate text-xs font-medium uppercase tracking-widest text-ink/50">{whenLabel(world.simHours)}</p>
+            <h1 className="truncate font-display text-2xl uppercase leading-none tracking-tight sm:text-3xl">{company.name}</h1>
           </div>
-          <div>
-            <dt className="text-ink/60">Reputation</dt>
-            <dd className="tabular-nums text-lg font-semibold">{company.rep}</dd>
-          </div>
-          <div>
-            <dt className="text-ink/60">Diesel</dt>
-            <dd className="tabular-nums text-lg font-semibold">${world.diesel.toFixed(2)}</dd>
-          </div>
-        </dl>
-        <div className="flex flex-wrap gap-2">
-          <Button variant={paused ? "pine" : "quiet"} onClick={togglePause}>
+          <Button variant={paused ? "primary" : "quiet"} onClick={togglePause}>
             {paused ? <Play className="size-4" aria-hidden /> : <Pause className="size-4" aria-hidden />}
             {paused ? "Resume" : "Pause"}
           </Button>
-          <Button
-            variant="quiet"
-            onClick={() => {
-              const blob = new Blob([exportSave()], { type: "application/json" });
-              const url = URL.createObjectURL(blob);
-              const link = document.createElement("a");
-              link.href = url;
-              link.download = "practical-miles.json";
-              link.click();
-              URL.revokeObjectURL(url);
-            }}
-          >
-            <Download className="size-4" aria-hidden />
-            Export
-          </Button>
-          <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-md border border-ink/15 bg-ink/5 px-4 text-sm font-semibold hover:bg-ink/10">
-            <Upload className="size-4" aria-hidden />
-            Import
-            <input
-              type="file"
-              accept="application/json"
-              className="sr-only"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                event.target.value = "";
-                if (!file) return;
-                const reader = new FileReader();
-                reader.onload = () => setNote(importSave(String(reader.result ?? "")));
-                reader.readAsText(file);
-              }}
-            />
-          </label>
         </div>
+        <dl className="mx-auto grid max-w-6xl grid-cols-3 border-t border-ink/10">
+          <Stat label="Cash" value={money(company.cash)} alert={company.cash < 0} />
+          <Stat label="Reputation" value={String(company.rep)} />
+          <Stat label="Diesel" value={`$${world.diesel.toFixed(2)}`} />
+        </dl>
+        <nav className="mx-auto hidden max-w-6xl gap-1 px-4 py-2 md:flex" aria-label="Company">
+          {NAV.map((item) => (
+            <NavLink key={item.to} to={item.to} label={item.label} active={isActive(path, item.to)} />
+          ))}
+        </nav>
       </header>
-      {paused ? <p className="text-sm text-ink/70">Paused. Closing the page will not move the clock, run payroll, or count the three months.</p> : null}
-      {closeHours != null ? (
-        <p className="text-sm text-rust">The bank account is negative. If it is still red on {whenLabel(closeHours)}, the company closes.</p>
-      ) : null}
-      <Notice text={note} />
-      <div className="grid items-start gap-4 lg:grid-cols-2">
-        <div className="lg:sticky lg:top-4">
-          <MapBoard route={route} />
-        </div>
-        <div className="min-w-0 space-y-4 lg:max-h-screen lg:overflow-y-auto lg:pr-1">
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" role="tablist" aria-label="Desk">
-            {(
-              [
-                ["board", "Board"],
-                ["fleet", "Fleet"],
-                ["crew", "Crew"],
-                ["yards", "Yards"],
-              ] as const
-            ).map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                role="tab"
-                aria-selected={tab === id}
-                className={`min-h-11 rounded-md text-sm font-semibold ${tab === id ? "bg-ink text-paper" : "border border-ink/15 bg-sheet text-ink"}`}
-                onClick={() => {
-                  setTab(id);
-                  if (id !== "board") onRoute(null);
-                }}
+      <main className="mx-auto w-full max-w-6xl space-y-4 px-4 py-5 pb-28 md:pb-10">
+        {paused ? <p className="text-sm text-ink/60">Paused. Closing the page will not move the clock, run payroll, or count the three months.</p> : null}
+        {closeHours != null ? (
+          <p className="text-sm text-rust">The bank account is negative. If it is still red on {whenLabel(closeHours)}, the company closes.</p>
+        ) : null}
+        <Outlet />
+      </main>
+      <nav className="nav-safe fixed inset-x-0 bottom-0 z-30 border-t border-ink/15 bg-paper md:hidden" aria-label="Company">
+        <div className="grid grid-cols-5">
+          {NAV.map((item) => {
+            const Icon = item.icon;
+            const active = isActive(path, item.to);
+            return (
+              <Link
+                key={item.to}
+                to={item.to}
+                className={`flex min-h-14 flex-col items-center justify-center gap-0.5 text-xs font-medium uppercase tracking-wide ${active ? "text-ink" : "text-ink/45"}`}
               >
-                {label}
-              </button>
-            ))}
-          </div>
-          {tab === "board" ? <Loads onRoute={onRoute} /> : null}
-          {tab === "fleet" ? <Fleet /> : null}
-          {tab === "crew" ? <Crew /> : null}
-          {tab === "yards" ? <Yards /> : null}
-          <Log />
+                <Icon className="size-5" aria-hidden />
+                {item.label}
+              </Link>
+            );
+          })}
         </div>
-      </div>
+      </nav>
     </div>
   );
 }
 
-function Log() {
+function isActive(path: string, to: string) {
+  const clean = path.replace(/\/$/, "") || "/";
+  return to === "/" ? clean === "/" : clean === to || clean.endsWith(to);
+}
+
+function NavLink({ to, label, active }: { to: (typeof NAV)[number]["to"]; label: string; active: boolean }) {
+  return (
+    <Link
+      to={to}
+      className={`inline-flex min-h-11 items-center px-3 text-sm font-medium uppercase tracking-widest ${active ? "border-b-2 border-ink text-ink" : "text-ink/45"}`}
+    >
+      {label}
+    </Link>
+  );
+}
+
+function Stat({ label, value, alert = false }: { label: string; value: string; alert?: boolean }) {
+  return (
+    <div className="border-ink/10 px-4 py-2 sm:border-l sm:first:border-l-0">
+      <dt className="text-xs uppercase tracking-widest text-ink/45">{label}</dt>
+      <dd className={`truncate text-lg font-semibold tabular-nums ${alert ? "text-rust" : "text-ink"}`}>{value}</dd>
+    </div>
+  );
+}
+
+export function Log() {
   const { world } = useWorld();
   if (!world.log.length) return null;
   return (
-    <section className="rounded-lg border border-ink/10 bg-sheet p-4">
-      <h2 className="mb-2 font-display text-lg tracking-tight">Desk notes</h2>
+    <section className="border border-ink/10 bg-sheet p-4">
+      <h2 className="mb-3 font-display text-2xl uppercase leading-none tracking-tight">Desk notes</h2>
       <ol className="space-y-2 text-sm">
         {world.log.slice(0, 8).map((line) => (
           <li key={line.id} className={line.tone === "bad" ? "text-rust" : line.tone === "good" ? "text-pine" : "text-ink/80"}>
-            <span className="tabular-nums text-ink/50">{whenLabel(line.at)} · </span>
+            <span className="tabular-nums text-ink/40">{whenLabel(line.at)} · </span>
             {line.text}
           </li>
         ))}
       </ol>
     </section>
   );
+}
+
+export function Frame({ children }: { children: ReactNode }) {
+  return <div className="space-y-5">{children}</div>;
 }

@@ -81,11 +81,11 @@ export function MapBoard({ route }: { route: MapPoint[] | null }) {
         style={{ aspectRatio: `${MAP.width} / ${MAP.height}` }}
       >
         <rect x={-28} y={-18} width={1056} height={656} className="fill-sheet" />
-        <path d={HIGHWAY} className="fill-none stroke-ink/25" strokeWidth={1.3} />
+        <path d={HIGHWAY} className="fill-none stroke-ink/35" strokeWidth={1.15} />
         {CITIES.map((city) => (
           <g key={city.name}>
             <circle cx={city.x} cy={city.y} r={1.6} className="fill-ink/40" />
-            <text x={city.x} y={city.y - 6} textAnchor="middle" className="fill-ink/55 font-sans" fontSize={11}>
+            <text x={city.x} y={city.y - 6} textAnchor="middle" className="fill-ink/70 font-sans" fontSize={11}>
               {city.name}
             </text>
           </g>

@@ -9,50 +9,152 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as IndexRouteImport } from './routes/index'
+import { Route as DeskRouteImport } from './routes/_desk'
+import { Route as DeskIndexRouteImport } from './routes/_desk/index'
+import { Route as DeskCrewRouteImport } from './routes/_desk/crew'
+import { Route as DeskFleetRouteImport } from './routes/_desk/fleet'
+import { Route as DeskLoadsRouteImport } from './routes/_desk/loads'
+import { Route as DeskYardsRouteImport } from './routes/_desk/yards'
 
-const IndexRoute = IndexRouteImport.update({
+const DeskRoute = DeskRouteImport.update({
+  id: '/_desk',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DeskIndexRoute = DeskIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => DeskRoute,
+} as any)
+const DeskCrewRoute = DeskCrewRouteImport.update({
+  id: '/crew',
+  path: '/crew',
+  getParentRoute: () => DeskRoute,
+} as any)
+const DeskFleetRoute = DeskFleetRouteImport.update({
+  id: '/fleet',
+  path: '/fleet',
+  getParentRoute: () => DeskRoute,
+} as any)
+const DeskLoadsRoute = DeskLoadsRouteImport.update({
+  id: '/loads',
+  path: '/loads',
+  getParentRoute: () => DeskRoute,
+} as any)
+const DeskYardsRoute = DeskYardsRouteImport.update({
+  id: '/yards',
+  path: '/yards',
+  getParentRoute: () => DeskRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
+  '/': typeof DeskIndexRoute
+  '/crew': typeof DeskCrewRoute
+  '/fleet': typeof DeskFleetRoute
+  '/loads': typeof DeskLoadsRoute
+  '/yards': typeof DeskYardsRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
+  '/crew': typeof DeskCrewRoute
+  '/fleet': typeof DeskFleetRoute
+  '/loads': typeof DeskLoadsRoute
+  '/yards': typeof DeskYardsRoute
+  '/': typeof DeskIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
+  '/_desk': typeof DeskRouteWithChildren
+  '/_desk/crew': typeof DeskCrewRoute
+  '/_desk/fleet': typeof DeskFleetRoute
+  '/_desk/loads': typeof DeskLoadsRoute
+  '/_desk/yards': typeof DeskYardsRoute
+  '/_desk/': typeof DeskIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/crew' | '/fleet' | '/loads' | '/yards'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/crew' | '/fleet' | '/loads' | '/yards' | '/'
+  id:
+    | '__root__'
+    | '/_desk'
+    | '/_desk/crew'
+    | '/_desk/fleet'
+    | '/_desk/loads'
+    | '/_desk/yards'
+    | '/_desk/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
+  DeskRoute: typeof DeskRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
+    '/_desk': {
+      id: '/_desk'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof DeskRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_desk/': {
+      id: '/_desk/'
       path: '/'
       fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof DeskIndexRouteImport
+      parentRoute: typeof DeskRoute
+    }
+    '/_desk/crew': {
+      id: '/_desk/crew'
+      path: '/crew'
+      fullPath: '/crew'
+      preLoaderRoute: typeof DeskCrewRouteImport
+      parentRoute: typeof DeskRoute
+    }
+    '/_desk/fleet': {
+      id: '/_desk/fleet'
+      path: '/fleet'
+      fullPath: '/fleet'
+      preLoaderRoute: typeof DeskFleetRouteImport
+      parentRoute: typeof DeskRoute
+    }
+    '/_desk/loads': {
+      id: '/_desk/loads'
+      path: '/loads'
+      fullPath: '/loads'
+      preLoaderRoute: typeof DeskLoadsRouteImport
+      parentRoute: typeof DeskRoute
+    }
+    '/_desk/yards': {
+      id: '/_desk/yards'
+      path: '/yards'
+      fullPath: '/yards'
+      preLoaderRoute: typeof DeskYardsRouteImport
+      parentRoute: typeof DeskRoute
     }
   }
 }
 
+interface DeskRouteChildren {
+  DeskCrewRoute: typeof DeskCrewRoute
+  DeskFleetRoute: typeof DeskFleetRoute
+  DeskLoadsRoute: typeof DeskLoadsRoute
+  DeskYardsRoute: typeof DeskYardsRoute
+  DeskIndexRoute: typeof DeskIndexRoute
+}
+
+const DeskRouteChildren: DeskRouteChildren = {
+  DeskCrewRoute: DeskCrewRoute,
+  DeskFleetRoute: DeskFleetRoute,
+  DeskLoadsRoute: DeskLoadsRoute,
+  DeskYardsRoute: DeskYardsRoute,
+  DeskIndexRoute: DeskIndexRoute,
+}
+
+const DeskRouteWithChildren = DeskRoute._addFileChildren(DeskRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
+  DeskRoute: DeskRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

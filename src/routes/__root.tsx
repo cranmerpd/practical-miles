@@ -13,7 +13,7 @@ export const Route = createRootRoute({
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: APP_NAME },
       { name: "description", content: "Run a small US freight company. Buy used trucks, hire drivers, and book ZIP-to-ZIP loads." },
-      { name: "theme-color", content: "#e6e0d4" },
+      { name: "theme-color", content: "#050505" },
     ],
     links: [
       { rel: "icon", type: "image/svg+xml", href: `${base}favicon.svg` },
@@ -22,7 +22,7 @@ export const Route = createRootRoute({
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {
         rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,560;9..144,640&family=Public+Sans:wght@400;500;600&display=swap",
+        href: "https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=Barlow:wght@400;500;600&display=swap",
       },
       { rel: "manifest", href: `${base}__grok/manifest.webmanifest` },
       { rel: "apple-touch-icon", href: `${base}__grok/icon-180.png` },

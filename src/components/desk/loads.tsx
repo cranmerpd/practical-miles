@@ -127,7 +127,7 @@ export function Loads({ onRoute }: { onRoute: (points: MapPoint[] | null) => voi
     <div className="space-y-4">
       <Books />
       {held ? (
-        <div id="booking-card" className="sticky top-0 z-10">
+        <div id="booking-card" className="sticky top-36 z-10">
           <Booking job={held} onRoute={onRoute} onClose={() => holdJob(null)} />
         </div>
       ) : null}
@@ -205,7 +205,7 @@ function Filter({ on, set, label }: { on: boolean; set: (value: boolean) => void
     <button
       type="button"
       aria-pressed={on}
-      className={`min-h-11 rounded-md border px-3 text-sm font-medium ${on ? "border-rust bg-rust text-paper" : "border-ink/15 bg-sheet text-ink"}`}
+      className={`min-h-11 rounded-md border px-3 text-sm font-medium uppercase tracking-wide ${on ? "border-ink bg-ink text-paper" : "border-ink/20 bg-transparent text-ink"}`}
       onClick={() => set(!on)}
     >
       {label}
@@ -448,7 +448,7 @@ function Booking({ job, onRoute, onClose }: { job: MarketJob; onRoute: (points: 
       {job.mode !== "road" ? (
         <p className="mt-3 text-sm text-rust">Air and sea loads are on the board so you can see them. You cannot book them yet.</p>
       ) : trucks.length === 0 ? (
-        <p className="mt-3 text-sm">You need a truck parked with no load on it. Used ones are on the Fleet tab. The seller delivers them to your warehouse.</p>
+        <p className="mt-3 text-sm">You need a truck parked with no load on it. Used ones are on the Fleet page. The seller delivers them to your warehouse.</p>
       ) : (
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <Field label="Truck">

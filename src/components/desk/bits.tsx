@@ -14,7 +14,7 @@ export function Panel({ title, children, extra }: { title: string; children: Rea
   return (
     <section className="rounded-lg border border-ink/10 bg-sheet p-4">
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="font-display text-lg tracking-tight">{title}</h2>
+        <h2 className="font-display text-2xl uppercase leading-none tracking-tight">{title}</h2>
         {extra}
       </div>
       {children}
@@ -22,6 +22,14 @@ export function Panel({ title, children, extra }: { title: string; children: Rea
   );
 }
 
+export function PageTitle({ kicker, title }: { kicker: string; title: string }) {
+  return (
+    <header className="space-y-1">
+      <p className="text-xs font-medium uppercase tracking-widest text-ink/50">{kicker}</p>
+      <h2 className="font-display text-3xl uppercase leading-none tracking-tight sm:text-4xl">{title}</h2>
+    </header>
+  );
+}
 export function Notice({ text }: { text: string | null }) {
   if (!text) return null;
   return (

@@ -166,8 +166,9 @@ function LiveChrome() {
       <header className="sticky top-0 z-30 border-b border-ink/15 bg-paper/95 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3">
           <div className="min-w-0">
-            <p className="truncate text-xs font-medium uppercase tracking-widest text-ink/50">{localDay(world.simHours, company.homeZip).label}, {localDay(world.simHours, company.homeZip).clock}</p>
+            <p className="truncate text-[10px] font-medium uppercase tracking-[0.22em] text-pine">{localDay(world.simHours, company.homeZip).label}</p>
             <h1 className="truncate font-display text-2xl uppercase leading-none tracking-tight sm:text-3xl">{company.name}</h1>
+            <p className="mt-1 text-sm tabular-nums text-ink/70">{localDay(world.simHours, company.homeZip).clock} local</p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
             <div className="flex" role="group" aria-label="Speed">
@@ -241,7 +242,7 @@ function LiveChrome() {
               <Link
                 key={item.to}
                 to={item.to}
-                className={`flex min-h-14 min-w-[4.6rem] shrink-0 flex-col items-center justify-center gap-0.5 px-1 text-xs font-medium uppercase tracking-wide ${active ? "text-ink" : "text-ink/45"}`}
+                className={`flex min-h-14 min-w-[4.6rem] shrink-0 flex-col items-center justify-center gap-0.5 border-t-2 px-1 text-[10px] font-medium uppercase tracking-wide ${active ? "border-pine text-ink" : "border-transparent text-ink/40"}`}
               >
                 <Icon className="size-5" aria-hidden />
                 {item.label}
@@ -263,7 +264,7 @@ function NavLink({ to, label, active }: { to: (typeof NAV)[number]["to"]; label:
   return (
     <Link
       to={to}
-      className={`inline-flex min-h-11 items-center px-3 text-sm font-medium uppercase tracking-widest ${active ? "border-b-2 border-ink text-ink" : "text-ink/45"}`}
+      className={`inline-flex min-h-11 items-center border-b-2 px-3 text-xs font-medium uppercase tracking-[0.18em] ${active ? "border-pine text-ink" : "border-transparent text-ink/40 hover:text-ink/70"}`}
     >
       {label}
     </Link>
@@ -274,7 +275,7 @@ function Stat({ label, value, alert = false }: { label: string; value: string; a
   return (
     <div className="border-ink/10 px-4 py-2 sm:border-l sm:first:border-l-0">
       <dt className="text-xs uppercase tracking-widest text-ink/45">{label}</dt>
-      <dd className={`truncate text-lg font-semibold tabular-nums ${alert ? "text-rust" : "text-ink"}`}>{value}</dd>
+      <dd className={`truncate font-display text-2xl leading-none tabular-nums ${alert ? "text-rust" : "text-ink"}`}>{value}</dd>
     </div>
   );
 }

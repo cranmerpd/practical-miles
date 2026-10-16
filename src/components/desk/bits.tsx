@@ -10,23 +10,27 @@ export function useWorld() {
   return { frame, world, company: world.company };
 }
 
-export function Panel({ title, children, extra }: { title: string; children: ReactNode; extra?: ReactNode }) {
+export function Panel({ title, kicker, children, extra }: { title: string; kicker?: string; children: ReactNode; extra?: ReactNode }) {
   return (
-    <section className="rounded-lg border border-ink/10 bg-sheet p-4">
-      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="font-display text-2xl uppercase leading-none tracking-tight">{title}</h2>
+    <section className="border border-ink/15 bg-sheet">
+      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-ink/10 px-4 py-3">
+        <div>
+          {kicker ? <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-pine">{kicker}</p> : null}
+          <h2 className="font-display text-2xl uppercase leading-none tracking-tight">{title}</h2>
+        </div>
         {extra}
       </div>
-      {children}
+      <div className="p-4">{children}</div>
     </section>
   );
 }
 
-export function PageTitle({ kicker, title }: { kicker: string; title: string }) {
+export function PageTitle({ kicker, title, note }: { kicker: string; title: string; note?: string }) {
   return (
-    <header className="space-y-1">
-      <p className="text-xs font-medium uppercase tracking-widest text-ink/50">{kicker}</p>
-      <h2 className="font-display text-3xl uppercase leading-none tracking-tight sm:text-4xl">{title}</h2>
+    <header>
+      <p className="text-[10px] font-medium uppercase tracking-[0.28em] text-pine">{kicker}</p>
+      <h2 className="mt-1 font-display text-4xl uppercase leading-none tracking-tight sm:text-5xl">{title}</h2>
+      {note ? <p className="mt-2 max-w-2xl text-sm text-ink/60">{note}</p> : null}
     </header>
   );
 }

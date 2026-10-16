@@ -22,7 +22,7 @@ import {
 import { useDesk } from "@/game/store";
 import { Button } from "@/components/ui/button";
 import { Field, Select } from "@/components/ui/input";
-import { cubes, dockLine, hoursLeft, Notice, Panel, pounds, stamp, useWorld } from "@/components/desk/bits";
+import { cubes, dockLine, hoursLeft, Notice, PageTitle, Panel, pounds, stamp, useWorld } from "@/components/desk/bits";
 
 type SortKey = "pay" | "miles" | "due" | "weight" | "rate";
 
@@ -140,6 +140,7 @@ export function Loads({ onRoute }: { onRoute: (points: MapPoint[] | null) => voi
 
   return (
     <div className="space-y-4">
+      <PageTitle kicker="Freight" title="Loads" note="Your books are freight you already took. The board is new work. Deliver goes to the customer. Bring home stops at your warehouse." />
       <Books />
       {held ? (
         <div id="booking-card" className="sticky top-36 z-10">
@@ -148,6 +149,7 @@ export function Loads({ onRoute }: { onRoute: (points: MapPoint[] | null) => voi
       ) : null}
       <Panel
         title="Load board"
+        kicker="Open market"
         extra={
           <span className="text-sm text-ink/60">
             {world.jobs.filter((job) => job.mode === "road").length} road · diesel ${world.diesel.toFixed(2)}/gal
@@ -242,7 +244,7 @@ function Books() {
   if (!active.length) return null;
 
   return (
-    <Panel title="On your books">
+    <Panel title="On your books" kicker="Already taken">
       <ul className="space-y-4">
         {active.map((shipment) => {
           const vehicle = company.vehicles.find(

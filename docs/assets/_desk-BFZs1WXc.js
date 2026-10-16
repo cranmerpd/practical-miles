@@ -1,1 +1,0 @@
-import{t as e}from"./desk-CtEVt9fo.js";var t=e;export{t as component};

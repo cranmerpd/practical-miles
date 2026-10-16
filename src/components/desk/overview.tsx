@@ -19,7 +19,7 @@ export function Overview() {
 
   return (
     <Frame>
-      <PageTitle kicker="Operations" title="Map" />
+      <PageTitle kicker="Operations" title="Map" note="Where the trucks are. The counts under the map are the company. The notes are what just happened." />
       <MapBoard route={null} />
       <dl className="grid grid-cols-2 border border-ink/10 sm:grid-cols-4">
         <Count label="Trucks" value={String(company.vehicles.length)} hint={moving === 0 ? "All parked" : `${moving} moving`} />
@@ -71,7 +71,7 @@ function Count({ label, value, hint }: { label: string; value: string; hint: str
   return (
     <div className="border-ink/10 p-4 sm:border-l sm:first:border-l-0">
       <dt className="text-xs uppercase tracking-widest text-ink/45">{label}</dt>
-      <dd className="font-display text-4xl leading-none tabular-nums">{value}</dd>
+      <dd className="font-display text-5xl leading-none tabular-nums">{value}</dd>
       <p className="mt-2 text-sm text-ink/55">{hint}</p>
     </div>
   );

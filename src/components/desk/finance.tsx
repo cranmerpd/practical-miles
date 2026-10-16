@@ -1,6 +1,6 @@
 import { labelPlace } from "@/game/geo";
 import { dueDayLabel, KIND_INFO, localDay, money, type LogLine } from "@/game/sim";
-import { Panel, useWorld } from "@/components/desk/bits";
+import { PageTitle, Panel, useWorld } from "@/components/desk/bits";
 import { nextPayday, readTrip, resale, type TripRead } from "@/components/desk/trip";
 
 export function Finance() {
@@ -41,6 +41,7 @@ export function Finance() {
 
   return (
     <div className="space-y-4">
+      <PageTitle kicker="Books" title="Finance" note="Cash and what is still owed, then what delivered freight actually collected. Fuel and wages are in the journal, not in the delivery totals." />
       <Panel title="Position today">
         <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
           <Cell label="Cash" value={money(company.cash)} alert={company.cash < 0} />
@@ -170,7 +171,7 @@ function Cell({ label, value, alert = false }: { label: string; value: string; a
   return (
     <div>
       <dt className="text-xs uppercase tracking-widest text-ink/45">{label}</dt>
-      <dd className={`mt-1 text-lg font-semibold tabular-nums ${alert ? "text-rust" : ""}`}>{value}</dd>
+      <dd className={`mt-1 font-display text-3xl leading-none tabular-nums ${alert ? "text-rust" : ""}`}>{value}</dd>
     </div>
   );
 }

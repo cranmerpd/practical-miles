@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { dockWait, dueDayLabel, KIND_INFO, localDay, money } from "@/game/sim";
-import { Panel, useWorld } from "@/components/desk/bits";
+import { PageTitle, Panel, useWorld } from "@/components/desk/bits";
 import { readTrip, type TripRead } from "@/components/desk/trip";
 
 export function Road() {
@@ -13,16 +13,20 @@ export function Road() {
 
   if (trips.length === 0) {
     return (
-      <Panel title="Nothing is moving">
-        <p className="text-sm text-ink/70">
-          Book a load, or send a truck empty from <Link to="/fleet" className="underline">Fleet</Link>. Fuel against pay shows up here once a truck has a trip.
-        </p>
-      </Panel>
+      <div className="space-y-4">
+        <PageTitle kicker="In transit" title="Road" note="Only trucks that are moving. Parked equipment is on Fleet." />
+        <Panel title="Nothing is moving">
+          <p className="text-sm text-ink/70">
+            Book a load, or send a truck empty from <Link to="/fleet" className="underline">Fleet</Link>. Fuel against pay shows up here once a truck has a trip.
+          </p>
+        </Panel>
+      </div>
     );
   }
 
   return (
     <div className="space-y-4">
+      <PageTitle kicker="In transit" title="Road" note="Miles left, whether the dock is open, and whether fuel eats the pay." />
       {trips.map((trip) => (
         <TripCard key={trip.vehicle.id} trip={trip} diesel={world.diesel} simHours={world.simHours} />
       ))}

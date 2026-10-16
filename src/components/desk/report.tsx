@@ -1,6 +1,6 @@
 import { labelPlace } from "@/game/geo";
 import { KIND_INFO, localDay, money, type DeliveryRecord } from "@/game/sim";
-import { cubes, Panel, pounds, useWorld } from "@/components/desk/bits";
+import { cubes, PageTitle, Panel, pounds, useWorld } from "@/components/desk/bits";
 
 export function Report() {
   const { world, company } = useWorld();
@@ -8,9 +8,12 @@ export function Report() {
   const rows = company.deliveries ?? [];
   if (rows.length === 0) {
     return (
-      <Panel title="Nothing delivered yet">
-        <p className="text-sm text-ink/70">When a customer pays the balance, the stop is written here. The day, the lane, the truck, and what the bank actually received.</p>
-      </Panel>
+      <div className="space-y-4">
+        <PageTitle kicker="History" title="Report" note="One card for each delivery, grouped by the day the customer paid." />
+        <Panel title="Nothing delivered yet">
+          <p className="text-sm text-ink/70">When a customer pays the balance, the stop is written here. The day, the lane, the truck, and what the bank actually received.</p>
+        </Panel>
+      </div>
     );
   }
 
@@ -34,6 +37,7 @@ export function Report() {
 
   return (
     <div className="space-y-4">
+      <PageTitle kicker="History" title="Report" note="One card for each delivery, grouped by the day the customer paid." />
       <Panel title="The record">
         <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
           <Cell label="Deliveries" value={String(rows.length)} />

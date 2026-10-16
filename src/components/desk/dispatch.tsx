@@ -182,7 +182,7 @@ export function Dispatch() {
       </Panel>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Panel title="On the floor">
+        <Panel title="On the floor" kicker="Waiting">
           {floor.filter((shipment) => !order.includes(shipment.id)).length === 0 ? (
             <p className="text-sm text-ink/70">
               Nothing waiting. Divert a rolling truck here, or book a shorter load and bring it to this building. Then load several of them on one truck.
@@ -209,7 +209,7 @@ export function Dispatch() {
           )}
         </Panel>
 
-        <Panel title="On the truck">
+        <Panel title="On the truck" kicker="Manifest">
           {chosen.length === 0 ? (
             <p className="text-sm text-ink/70">The truck is empty. Load stops in the order you want them delivered.</p>
           ) : (
@@ -255,7 +255,7 @@ export function Dispatch() {
         </Panel>
       </div>
 
-      <Panel title="The loop">
+      <Panel title="The loop" kicker="Plan">
         {preview?.ok ? (
           <>
             <p className="text-sm text-ink/70">

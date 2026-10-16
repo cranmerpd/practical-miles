@@ -1336,7 +1336,7 @@ export function acceptJob(
       cargoValue: item.cargoValue,
       pay: item.pay,
       lateFee: item.lateFee,
-      dueAt: world.simHours + item.dueInHours,
+      dueAt: item.postedAt + item.dueInHours,
       deposit,
       status: "booked",
       vehicleId: vehicle.id,

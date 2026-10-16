@@ -446,50 +446,55 @@ function Booking({ job, onRoute, onClose }: { job: MarketJob; onRoute: (points: 
         </div>
       )}
       {quote?.ok ? (
-        <>
-        <dl className="mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">
-          <div>
-            <dt className="text-ink/60">Empty miles</dt>
-            <dd className="tabular-nums font-medium">{Math.round(quote.deadhead).toLocaleString("en-US")}</dd>
-          </div>
-          <div>
-            <dt className="text-ink/60">Loaded miles</dt>
-            <dd className="tabular-nums font-medium">{Math.round(quote.loaded).toLocaleString("en-US")}</dd>
-          </div>
-          <div>
-            <dt className="text-ink/60">With breaks</dt>
-            <dd className="tabular-nums font-medium">{hoursLeft(quote.hours)}</dd>
-          </div>
-          <div>
-            <dt className="text-ink/60">Fuel</dt>
-            <dd className="tabular-nums font-medium">{money(quote.fuelCost)}</dd>
-          </div>
-          <div>
-            <dt className="text-ink/60">After fuel</dt>
-            <dd className={`tabular-nums font-medium ${quote.profit < 0 ? "text-rust" : "text-pine"}`}>{money(quote.profit)}</dd>
-          </div>
-        </dl>
-        <p className={`mt-3 text-sm ${quote.dockClosed ? "text-rust" : "text-pine"}`}>{dockLine(quote.arriveAt, quote.unloadAt, job.toZip, quote.dockClosed)}</p>
-        {quote.stageAt != null && canStage && vehicle ? (
-          <p className="mt-3 text-sm text-ink/70">
-            Bringing it home gets the truck back to {labelPlace(vehicle.zip)} about {stage?.ok ? stamp(stage.homeAt, vehicle.zip) : stamp(quote.stageAt, vehicle.zip)}. The customer dock is not on that trip.
-          </p>
-        ) : null}
-        </>
+        <div className="mt-4 space-y-3 border border-ink/15 p-3">
+          <p className="text-sm font-medium">Deliver to the customer</p>
+          <p className="text-sm text-ink/60">This trip goes to the customer. It does not pick up anything else, and it does not come back to the warehouse unless the driver is finished.</p>
+          <dl className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">
+            <div>
+              <dt className="text-ink/60">Empty miles</dt>
+              <dd className="tabular-nums font-medium">{Math.round(quote.deadhead).toLocaleString("en-US")}</dd>
+            </div>
+            <div>
+              <dt className="text-ink/60">Loaded miles</dt>
+              <dd className="tabular-nums font-medium">{Math.round(quote.loaded).toLocaleString("en-US")}</dd>
+            </div>
+            <div>
+              <dt className="text-ink/60">With breaks</dt>
+              <dd className="tabular-nums font-medium">{hoursLeft(quote.hours)}</dd>
+            </div>
+            <div>
+              <dt className="text-ink/60">Fuel</dt>
+              <dd className="tabular-nums font-medium">{money(quote.fuelCost)}</dd>
+            </div>
+            <div>
+              <dt className="text-ink/60">After fuel</dt>
+              <dd className={`tabular-nums font-medium ${quote.profit < 0 ? "text-rust" : "text-pine"}`}>{money(quote.profit)}</dd>
+            </div>
+          </dl>
+          <p className={`text-sm ${quote.dockClosed ? "text-rust" : "text-pine"}`}>{dockLine(quote.arriveAt, quote.unloadAt, job.toZip, quote.dockClosed)}</p>
+          {quote.warnings.map((warning) => (
+            <p key={warning} className="text-sm text-rust">{warning}</p>
+          ))}
+          <Button
+            disabled={job.mode !== "road"}
+            onClick={() => {
+              const error = accept(job.id, vehicleId, driverId, trailerId || undefined, Boolean(quote.warnings.length));
+              if (error && error !== "CONFIRM") setNote(error);
+              else setNote(null);
+            }}
+          >
+            {quote.warnings.length ? "Deliver anyway" : "Deliver to the customer"}
+          </Button>
+        </div>
       ) : quote?.reason ? (
         <p className="mt-3 text-sm text-rust">{quote.reason}</p>
       ) : null}
-      {quote?.warnings.map((warning) => (
-        <p key={warning} className="mt-2 text-sm text-rust">
-          {warning}
-        </p>
-      ))}
       {canStage && vehicle && stage ? (
         <div className="mt-4 space-y-3 border border-ink/15 p-3">
-          <p className="text-sm font-medium">Also pick up on the way home</p>
-          <p className="text-sm text-ink/60">One hop off this route, and only if the stop adds 75 miles or less. They have to fit on the truck and in the warehouse.</p>
+          <p className="text-sm font-medium">Bring it to {labelPlace(vehicle.zip)}</p>
+          <p className="text-sm text-ink/60">This trip does not go to the customer. The truck picks up and comes home. Check any other loads on the way, then confirm. Nothing is booked until you do.</p>
           {choices.length === 0 ? (
-            <p className="text-sm text-ink/70">Nothing else on the board is on the way.</p>
+            <p className="text-sm text-ink/70">Nothing else on the board is on the way. One hop, and no more than 75 extra miles.</p>
           ) : (
             <ul className="space-y-2">
               {choices.map((choice) => {
@@ -531,7 +536,7 @@ function Booking({ job, onRoute, onClose }: { job: MarketJob; onRoute: (points: 
               })}
             </ul>
           )}
-          {pickupOrder.length > 0 ? (
+          {pickupOrder.length > 1 ? (
             <ol className="space-y-2">
               {pickupOrder.map((id, index) => {
                 const item = id === job.id ? job : world.jobs.find((row) => row.id === id);
@@ -549,40 +554,25 @@ function Booking({ job, onRoute, onClose }: { job: MarketJob; onRoute: (points: 
           ) : null}
           {stage.ok ? (
             <p className="text-sm text-ink/70">
-              {pickupOrder.length} pickup{pickupOrder.length === 1 ? "" : "s"}. Home about {stamp(stage.homeAt, vehicle.zip)}. Fuel about {money(stage.fuelCost)}. Truck {pounds(stage.weight)} of {pounds(stage.payload)}.
+              {pickupOrder.length} pickup{pickupOrder.length === 1 ? "" : "s"}. Home about {stamp(stage.homeAt, vehicle.zip)}. Fuel about {money(stage.fuelCost)}. Truck {pounds(stage.weight)} of {pounds(stage.payload)}. The due day does not move.
             </p>
           ) : (
             <p className="text-sm text-rust">{stage.reason}</p>
           )}
-        </div>
-      ) : null}
-      {quote?.ok && vehicle && job.miles <= 400 && company.warehouses.some((yard) => yard.zip === vehicle.zip) ? (
-        <p className="mt-3 text-sm text-ink/60">The customer’s day still runs while the freight sits in the warehouse.</p>
-      ) : null}
-      <div className="mt-3 flex flex-wrap gap-2">
-        <Button
-          disabled={job.mode !== "road" || !quote?.ok}
-          onClick={() => {
-            const error = accept(job.id, vehicleId, driverId, trailerId || undefined, Boolean(quote?.warnings.length));
-            if (error && error !== "CONFIRM") setNote(error);
-            else setNote(null);
-          }}
-        >
-          {quote?.warnings.length ? "Accept anyway" : "Accept shipment"}
-        </Button>
-        {quote?.ok && vehicle && job.miles <= 400 && company.warehouses.some((yard) => yard.zip === vehicle.zip) ? (
           <Button
             variant="quiet"
-            disabled={!stage?.ok}
+            disabled={!stage.ok}
             onClick={() => {
               const error = accept(job.id, vehicleId, driverId, trailerId || undefined, true, true, pickupOrder);
               if (error && error !== "CONFIRM") setNote(error);
               else setNote(null);
             }}
           >
-            {pickupOrder.length > 1 ? `Bring ${pickupOrder.length} home` : `Bring it to ${labelPlace(vehicle.zip)}`}
+            {pickupOrder.length > 1 ? `Confirm, bring ${pickupOrder.length} home` : `Confirm, bring it home`}
           </Button>
-        ) : null}
+        </div>
+      ) : null}
+      <div className="mt-3">
         <Button variant="quiet" onClick={onClose}>
           Leave it on the board
         </Button>

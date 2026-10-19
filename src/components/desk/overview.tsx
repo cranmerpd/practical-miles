@@ -5,6 +5,7 @@ import { Frame, Log } from "@/components/desk/desk";
 import { Notice, PageTitle, useWorld } from "@/components/desk/bits";
 import { useDesk } from "@/game/store";
 import { money } from "@/game/sim";
+import { nextPayday, readTrip } from "@/components/desk/trip";
 import { Button } from "@/components/ui/button";
 
 export function Overview() {
@@ -17,38 +18,42 @@ export function Overview() {
   const active = company.shipments.filter((shipment) => shipment.status === "rolling" || shipment.status === "booked").length;
   const stored = company.shipments.filter((shipment) => shipment.status === "stored").length;
   const road = world.jobs.filter((job) => job.mode === "road").length;
-  const yours = company.deliveries.reduce((sum, row) => sum + (row.payout ?? 0), 0);
+  const freeDrivers = company.drivers.filter((driver) => !driver.vehicleId && !(driver.restUntil != null && world.simHours < driver.restUntil)).length;
+  const movingTrips = company.vehicles
+    .map((vehicle) => readTrip(world, company, vehicle))
+    .filter((trip) => trip != null);
 
   return (
     <Frame>
-      <PageTitle kicker="Operations" title="Map" note="Where the trucks are. The counts under the map are the company. The notes are what just happened." />
+      <PageTitle kicker="Operations" title="Map" note="The company at a glance. The map is where the trucks are. The notes are what just happened." />
       <MapBoard route={null} />
       <dl className="grid grid-cols-2 border border-ink/10 sm:grid-cols-4">
-        <Count label="Trucks" value={String(company.vehicles.length)} hint={moving === 0 ? "All parked" : `${moving} moving`} />
-        <Count label="Drivers" value={String(company.drivers.length)} hint={company.drivers.length === 0 ? "None hired" : "On the roster"} />
-        <Count label="Yards" value={String(company.warehouses.length)} hint={stored === 0 ? "No freight stored" : `${stored} stored`} />
-        <Count label="Loads" value={String(active)} hint={`${road} on the board`} />
+        <Count label="Cash" value={money(company.cash)} hint={company.cash < 0 ? "In the red" : "In the bank"} />
+        <Count label="Trucks out" value={`${moving}/${company.vehicles.length || 0}`} hint={moving === 0 ? "All parked" : "On a trip"} />
+        <Count label="Drivers free" value={String(freeDrivers)} hint={`${company.drivers.length} on the roster`} />
+        <Count label="Payroll" value={nextPayday(world.simHours)} hint={company.drivers.length ? money(company.drivers.reduce((sum, driver) => sum + driver.wage, 0)) : "No wages yet"} />
+        <Count label="Stored" value={String(stored)} hint="On a warehouse floor" />
+        <Count label="Booked" value={String(active)} hint="Not yet delivered" />
+        <Count label="Board" value={String(road)} hint="Open road freight" />
+        <Count label="Reputation" value={String(company.rep)} hint="1 to 100" />
       </dl>
       <section className="border border-ink/10">
-        <h2 className="border-b border-ink/10 px-4 py-3 text-xs uppercase tracking-widest text-ink/45">Freight taken</h2>
-        <ul>
-          <li className="flex items-baseline justify-between gap-4 px-4 py-3 text-sm">
-            <span>You</span>
-            <span className="tabular-nums">{money(yours)}</span>
-          </li>
-          {world.rivals.map((rival) => {
-            const out = rival.trucks.filter((truck) => truck.status !== "idle").length;
-            return (
-              <li key={rival.id} className="flex items-baseline justify-between gap-4 border-t border-ink/10 px-4 py-3 text-sm">
+        <h2 className="border-b border-ink/10 px-4 py-3 text-xs uppercase tracking-widest text-ink/45">Moving now</h2>
+        {movingTrips.length === 0 ? (
+          <p className="px-4 py-3 text-sm text-ink/60">Nothing is on the road.</p>
+        ) : (
+          <ul>
+            {movingTrips.map((trip) => (
+              <li key={trip.vehicle.id} className="flex flex-wrap items-baseline justify-between gap-2 border-t border-ink/10 px-4 py-3 text-sm first:border-0">
                 <span>
-                  {rival.name}
-                  <span className="text-ink/45"> · {rival.closed ? "closed" : `${out} of ${rival.trucks.length} out`}</span>
+                  {trip.driverName ?? "No driver"}
+                  <span className="text-ink/50"> · {trip.leg} toward {trip.heading}</span>
                 </span>
-                <span className="tabular-nums">{money(rival.earned ?? 0)}</span>
+                <span className="tabular-nums text-ink/70">{Math.max(1, Math.round(trip.milesLeft)).toLocaleString("en-US")} mi</span>
               </li>
-            );
-          })}
-        </ul>
+            ))}
+          </ul>
+        )}
       </section>
       <Log />
       <div className="flex flex-wrap gap-2">

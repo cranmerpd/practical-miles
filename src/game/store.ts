@@ -2,6 +2,7 @@ import { create } from "zustand";
 import {
   acceptJob,
   advance,
+  buildYard,
   buyListing,
   buyYard,
   cancelShipment,
@@ -46,6 +47,7 @@ type DeskState = {
   sellTruck: (id: string) => string | null;
   repair: (id: string) => string | null;
   buyWarehouse: (id: string) => string | null;
+  buildWarehouse: (zip: string) => string | null;
   sellWarehouse: (id: string) => string | null;
   sendTruck: (vehicleId: string, zip: string, driverId?: string) => string | null;
   divert: (shipmentId: string, warehouseId: string) => string | null;
@@ -183,6 +185,12 @@ export const useDesk = create<DeskState>((set, get) => ({
   },
   buyWarehouse: (id) => {
     const error = buyYard(get().world, id);
+    set({ frame: get().frame + 1 });
+    persist(get().world, get().paused);
+    return error;
+  },
+  buildWarehouse: (zip) => {
+    const error = buildYard(get().world, zip);
     set({ frame: get().frame + 1 });
     persist(get().world, get().paused);
     return error;

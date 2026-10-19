@@ -1,5 +1,5 @@
 import { labelPlace } from "@/game/geo";
-import { dueDayLabel, KIND_INFO, localDay, money, type LogLine } from "@/game/sim";
+import { dueDayLabel, KIND_INFO, localDay, money, type LogLine, type Rival } from "@/game/sim";
 import { Panel, useWorld } from "@/components/desk/bits";
 import { nextPayday, readTrip, resale, type TripRead } from "@/components/desk/trip";
 
@@ -52,6 +52,18 @@ export function Finance() {
         </dl>
         <p className="mt-3 text-sm text-ink/70">
           Still to collect is the unpaid balance on freight you already booked, including what is sitting in a warehouse. Deposits are already in cash. Fuel is what the trucks still out will burn at ${world.diesel.toFixed(2)} a gallon. The first building is not for sale.
+        </p>
+      </Panel>
+
+      <Panel title="Collected by day">
+        <DayBars records={records} homeZip={company.homeZip} simHours={world.simHours} />
+        <p className="mt-3 text-sm text-ink/60">Each bar is what customers paid on deliveries that day, after late cuts and damage. Fuel and wages are not in the bars.</p>
+      </Panel>
+
+      <Panel title="Delivered-load pay">
+        <Share you={allBooks.collected} rivals={world.rivals} />
+        <p className="mt-3 text-sm text-ink/60">
+          This is pay collected when a load was delivered. It is not cash left after fuel and wages, and it is not a share of the loads still on the board. Your number is the life of the company. Theirs is what their customers have paid them since they started hauling in this save.
         </p>
       </Panel>
 
@@ -131,6 +143,52 @@ export function Finance() {
         </Panel>
       ) : null}
     </div>
+  );
+}
+
+function DayBars({ records, homeZip, simHours }: { records: { at: number | null; payout: number | null; damage: number }[]; homeZip: string; simHours: number }) {
+  const days = Array.from({ length: 14 }, (_, index) => {
+    const at = simHours - (13 - index) * 24;
+    const day = localDay(at, homeZip);
+    const collected = records.reduce((sum, row) => {
+      if (row.at == null) return sum;
+      return localDay(row.at, homeZip).key === day.key ? sum + (row.payout ?? 0) - row.damage : sum;
+    }, 0);
+    return { label: day.short.slice(0, 3), value: Math.max(0, collected) };
+  });
+  const max = Math.max(1, ...days.map((day) => day.value));
+  return (
+    <div className="flex h-36 items-end gap-1">
+      {days.map((day, index) => (
+        <div key={`${day.label}-${index}`} className="flex h-full min-w-0 flex-1 flex-col justify-end gap-1">
+          <div className="w-full bg-pine" style={{ height: `${Math.max(2, (day.value / max) * 100)}%` }} title={money(day.value)} />
+          <span className="truncate text-center text-[10px] text-ink/45">{index % 2 === 0 ? day.label : ""}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Share({ you, rivals }: { you: number; rivals: Rival[] }) {
+  const rows = [{ name: "You", value: Math.max(0, you), closed: false }, ...rivals.map((rival) => ({ name: rival.name, value: Math.max(0, rival.earned ?? 0), closed: rival.closed }))];
+  const max = Math.max(1, ...rows.map((row) => row.value));
+  return (
+    <ul className="space-y-3">
+      {rows.map((row) => (
+        <li key={row.name}>
+          <div className="mb-1 flex items-baseline justify-between gap-3 text-sm">
+            <span>
+              {row.name}
+              {row.closed ? <span className="text-ink/45"> · closed</span> : null}
+            </span>
+            <span className="tabular-nums">{money(row.value)}</span>
+          </div>
+          <div className="h-2 bg-ink/10">
+            <div className={`h-2 ${row.name === "You" ? "bg-pine" : "bg-ink/50"}`} style={{ width: `${(row.value / max) * 100}%` }} />
+          </div>
+        </li>
+      ))}
+    </ul>
   );
 }
 

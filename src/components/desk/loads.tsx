@@ -105,7 +105,7 @@ export function Loads({ onRoute }: { onRoute: (points: MapPoint[] | null) => voi
   const [fragileOnly, setFragileOnly] = useState(false);
   const [lateOnly, setLateOnly] = useState(false);
   const [roadOnly, setRoadOnly] = useState(false);
-  const [sort, setSort] = useState<SortKey>("pay");
+  const [sort, setSort] = useState<SortKey>("rate");
   const heldId = world.heldJobId;
 
   useEffect(() => {
@@ -140,7 +140,6 @@ export function Loads({ onRoute }: { onRoute: (points: MapPoint[] | null) => voi
 
   return (
     <div className="space-y-4">
-      <Books />
       {held ? (
         <div id="booking-card" className="sticky top-36 z-10">
           <Booking job={held} onRoute={onRoute} onClose={() => holdJob(null)} />
@@ -198,6 +197,7 @@ export function Loads({ onRoute }: { onRoute: (points: MapPoint[] | null) => voi
                     <span className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-ink/70">
                       <span className="tabular-nums">{job.miles.toLocaleString("en-US")} mi</span>
                       <span className="tabular-nums">${(job.pay / Math.max(1, job.miles)).toFixed(2)}/mi</span>
+                      <span>{stopWords(job)}</span>
                       <span>{pounds(job.weight)}</span>
                       <span>{cubes(job.cube)}</span>
                       <span>{dueDayLabel(world.simHours, job.postedAt + job.dueInHours, job.toZip)}</span>
@@ -216,6 +216,16 @@ export function Loads({ onRoute }: { onRoute: (points: MapPoint[] | null) => voi
       </Panel>
     </div>
   );
+}
+
+function stopWords(job: MarketJob): string {
+  if (!job.pickupKind && !job.dropKind) return "8am–8pm";
+  const side = (kind: MarketJob["pickupKind"], end: string) => {
+    if (kind === "commercial") return `Commercial ${end} 8–5`;
+    if (kind === "residential") return `House ${end} 8–8`;
+    return `${end} 8–8`;
+  };
+  return `${side(job.pickupKind, "pickup")} · ${side(job.dropKind, "delivery")}`;
 }
 
 function Filter({ on, set, label }: { on: boolean; set: (value: boolean) => void; label: string }) {

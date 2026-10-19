@@ -69,6 +69,8 @@ export type Warehouse = {
   price: number;
 };
 
+export type StopKind = "commercial" | "residential";
+
 export type MarketJob = {
   id: string;
   mode: "road" | "air" | "sea";
@@ -84,6 +86,8 @@ export type MarketJob = {
   dueInHours: number;
   postedAt: number;
   expiresAt: number;
+  pickupKind?: StopKind;
+  dropKind?: StopKind;
 };
 
 export type DeliveryRecord = {
@@ -129,6 +133,8 @@ export type Shipment = {
   warehouseId?: string;
   vehicleId?: string;
   lateNoted: boolean;
+  pickupKind?: StopKind;
+  dropKind?: StopKind;
 };
 
 export type Listing = {
@@ -146,6 +152,8 @@ export type RivalLeg = {
   kind: "empty" | "loaded";
   toZip: string;
   fromZip?: string;
+  fromKind?: StopKind;
+  toKind?: StopKind;
   pay?: number;
   weight?: number;
   cube?: number;
@@ -433,11 +441,12 @@ function localHour(simHours: number, offset: number): number {
   return hour < 0 ? hour + 24 : hour;
 }
 
-export function dockWait(simHours: number, zip: string): number {
+export function dockWait(simHours: number, zip: string, kind?: StopKind): number {
   const place = lookupZip(zip);
   if (!place) return 0;
+  const close = kind === "commercial" ? 17 : 20;
   const hour = localHour(simHours, zoneOffset(place.state, place.lon, simHours));
-  if (hour >= 8 && hour < 20) return 0;
+  if (hour >= 8 && hour < close) return 0;
   if (hour < 8) return 8 - hour;
   return 24 - hour + 8;
 }
@@ -450,14 +459,22 @@ export function hoursUntilMorning(simHours: number, zip: string): number {
   return 24 - hour + 8;
 }
 
-export function dueAtFor(simHours: number, miles: number, toZip: string): number {
+export function dueAtFor(simHours: number, miles: number, toZip: string, kind?: StopKind): number {
   const drive = dutyHours(driveHoursFor(Math.max(1, miles), 60, 45));
   const extraDays = miles < 120 ? 1 : miles < 400 ? 2 : miles < 900 ? 3 : 4;
-  const earliest = simHours + drive + dockWait(simHours + drive, toZip);
+  const close = kind === "commercial" ? 17 : 20;
+  const earliest = simHours + drive + dockWait(simHours + drive, toZip, kind);
   const place = lookupZip(toZip);
   const hour = localHour(earliest, place ? zoneOffset(place.state, place.lon, earliest) : -5);
-  const untilClose = hour <= 20 ? 20 - hour : 24 - hour + 20;
+  const untilClose = hour <= close ? close - hour : 24 - hour + close;
   return earliest + untilClose + extraDays * 24;
+}
+
+export function tripEta(simHours: number, miles: number, cruise: number, skill: number, driven: number, broke: boolean, zip: string, kind?: StopKind, dock = true) {
+  const clock = rollDuty(driveHoursFor(Math.max(0, miles), cruise || 60, skill), driven, broke);
+  const arrive = simHours + (miles <= 0.05 ? 0 : clock.elapsed);
+  const wait = dock ? dockWait(arrive, zip, kind) : 0;
+  return { at: arrive + wait, driven: wait > 2 ? 0 : clock.driven, broke: wait > 2 ? false : clock.broke };
 }
 
 export function dueDayLabel(simHours: number, dueAt: number, zip: string): string {
@@ -599,7 +616,8 @@ export function warmWorld(world: World): void {
   if (world.jobs.length < 20) refillBoard(world, 28);
   else if (world.company) refillBoard(world);
   world.jobs = world.jobs.filter((job) => job.mode === "road");
-  if (world.listings.length < 4) refillListings(world);
+  trimListings(world);
+  if (world.listings.length < 8) refillListings(world);
   ensureRivals(world);
 }
 
@@ -687,9 +705,10 @@ function makeJob(world: World, mode: MarketJob["mode"]): MarketJob | null {
   const lateFee = rngNext(world) < 0.1;
   const rate = (miles < 400 ? 2.5 : 2.05) * (1 + 0.08 * Math.sin(world.simHours / 36));
   let pay = Math.round(miles * rate * (fragile ? 1.08 : 1) * (lateFee ? 1.06 : 1));
-  if (mode !== "road") pay = Math.round(pay * 2.4);
+  const stops = stopMix(world, false);
+  pay = Math.round(pay * stops.pay);
   const cargoValue = Math.round((6000 + rngNext(world) * 50000) * (fragile ? 1.4 : 1) * (rngNext(world) < 0.08 ? 2.2 : 1));
-  const dueAt = dueAtFor(world.simHours, miles, pair.to);
+  const dueAt = dueAtFor(world.simHours, miles, pair.to, stops.drop);
   return {
     id: uid(world, "job"),
     mode,
@@ -705,6 +724,8 @@ function makeJob(world: World, mode: MarketJob["mode"]): MarketJob | null {
     dueInHours: Math.max(24, dueAt - world.simHours),
     postedAt: world.simHours,
     expiresAt: world.simHours + (mode === "road" ? 36 + rngNext(world) * 36 : 48),
+    pickupKind: stops.pickup,
+    dropKind: stops.drop,
   };
 }
 
@@ -739,8 +760,9 @@ function makeLocalJob(world: World): MarketJob | null {
   const fragile = rngNext(world) < 0.12;
   const lateFee = rngNext(world) < 0.06;
   const rate = 3.6 * (1 + 0.08 * Math.sin(world.simHours / 36));
-  const pay = Math.max(180, Math.round(plan.miles * rate * (fragile ? 1.08 : 1) * (lateFee ? 1.06 : 1)));
-  const dueAt = dueAtFor(world.simHours, plan.miles, to);
+  const stops = stopMix(world, true);
+  const pay = Math.max(180, Math.round(plan.miles * rate * (fragile ? 1.08 : 1) * (lateFee ? 1.06 : 1) * stops.pay));
+  const dueAt = dueAtFor(world.simHours, plan.miles, to, stops.drop);
   return {
     id: uid(world, "job"),
     mode: "road",
@@ -756,7 +778,23 @@ function makeLocalJob(world: World): MarketJob | null {
     dueInHours: Math.max(24, dueAt - world.simHours),
     postedAt: world.simHours,
     expiresAt: world.simHours + 30 + rngNext(world) * 18,
+    pickupKind: stops.pickup,
+    dropKind: stops.drop,
   };
+}
+
+function stopMix(world: World, local: boolean): { pickup: StopKind; drop: StopKind; pay: number } {
+  const roll = rngNext(world);
+  if (local) {
+    if (roll < 0.62) return { pickup: "residential", drop: "residential", pay: 0.84 };
+    if (roll < 0.9) return { pickup: "commercial", drop: "residential", pay: 1 };
+    if (roll < 0.98) return { pickup: "commercial", drop: "commercial", pay: 1.15 };
+    return { pickup: "residential", drop: "commercial", pay: 1.05 };
+  }
+  if (roll < 0.58) return { pickup: "commercial", drop: "commercial", pay: 1.15 };
+  if (roll < 0.78) return { pickup: "commercial", drop: "residential", pay: 1 };
+  if (roll < 0.96) return { pickup: "residential", drop: "residential", pay: 0.84 };
+  return { pickup: "residential", drop: "commercial", pay: 1.05 };
 }
 
 function refillBoard(world: World, roadTarget = 36) {
@@ -780,12 +818,38 @@ function refillBoard(world: World, roadTarget = 36) {
   }
 }
 
+function listingHub(world: World) {
+  const yards = world.company?.warehouses ?? [];
+  if (!yards.length) return hubs[ri(world, hubs.length)];
+  const yard = yards[ri(world, yards.length)];
+  const home = lookupZip(yard.zip);
+  if (!home) return hubs[ri(world, hubs.length)];
+  const pool = hubs.filter((hub) => {
+    const away = havMiles(home.lat, home.lon, hub.lat, hub.lon);
+    return away >= 20 && away <= 400;
+  });
+  return pool.length ? pool[ri(world, pool.length)] : hubs[home.hub];
+}
+
+function trimListings(world: World) {
+  const company = world.company;
+  if (!company?.warehouses.length) return;
+  world.listings = world.listings.filter((listing) => {
+    const place = lookupZip(listing.zip);
+    if (!place) return false;
+    return company.warehouses.some((yard) => {
+      const there = lookupZip(yard.zip);
+      return Boolean(there && havMiles(there.lat, there.lon, place.lat, place.lon) <= 500);
+    });
+  });
+}
+
 function refillListings(world: World) {
-  const kinds: Kind[] = ["van", "van", "box16", "box16", "box26", "trailer53", "daycab", "sleeper"];
-  while (world.listings.length < 7) {
+  const kinds: Kind[] = ["van", "van", "box16", "box16", "box26", "box26", "trailer53", "daycab", "sleeper"];
+  while (world.listings.length < 14) {
     const kind = pick(world, kinds);
     const spec = KIND_INFO[kind];
-    const hub = hubs[ri(world, hubs.length)];
+    const hub = listingHub(world);
     const condition = 35 + ri(world, 55);
     const price = Math.round(spec.lo + (spec.hi - spec.lo) * (0.35 + (condition / 100) * 0.6) * (0.85 + rngNext(world) * 0.3));
     world.listings.push({
@@ -1048,7 +1112,7 @@ function armRivalLeg(world: World, truck: RivalTruck, depth = 0) {
   truck.status = leg.kind === "loaded" ? "loaded" : "empty";
   truck.dockHold = false;
   if (leg.kind === "loaded") {
-    const wait = dockWait(world.simHours, truck.zip);
+    const wait = dockWait(world.simHours, truck.zip, leg.fromKind);
     if (wait > 0) truck.waitUntil = world.simHours + wait;
   }
 }
@@ -1096,7 +1160,7 @@ function rivalBook(world: World, rival: Rival, truck: RivalTruck) {
   world.jobs = world.jobs.filter((item) => item.id !== job.id);
   const legs: RivalLeg[] = [];
   if (truck.zip !== job.fromZip) legs.push({ kind: "empty", toZip: job.fromZip });
-  legs.push({ kind: "loaded", toZip: job.toZip, fromZip: job.fromZip, pay: job.pay, weight: job.weight, cube: job.cube });
+  legs.push({ kind: "loaded", toZip: job.toZip, fromZip: job.fromZip, fromKind: job.pickupKind, toKind: job.dropKind, pay: job.pay, weight: job.weight, cube: job.cube });
   if (job.toZip !== truck.yardZip) legs.push({ kind: "empty", toZip: truck.yardZip });
   truck.legs = legs;
   armRivalLeg(world, truck);
@@ -1190,7 +1254,7 @@ function finishRivalLeg(world: World, rival: Rival, truck: RivalTruck) {
   if (!leg) return;
   truck.zip = leg.toZip;
   if (leg.kind === "loaded") {
-    const wait = dockWait(world.simHours, leg.toZip);
+    const wait = dockWait(world.simHours, leg.toZip, leg.toKind);
     if (wait > 0 && !truck.dockHold) {
       truck.dockHold = true;
       truck.waitUntil = world.simHours + wait;
@@ -1360,7 +1424,7 @@ export function quoteJob(
   const miles = dead.miles + loadedPlan.miles;
   const clock = rollDuty(driveHoursFor(miles, spec.cruise || 60, driver.skill), driver.driveToday ?? 0, Boolean(driver.breakTaken));
   const arriveAt = world.simHours + clock.elapsed;
-  const wait = dockWait(arriveAt, job.toZip);
+  const wait = dockWait(arriveAt, job.toZip, "dropKind" in job ? job.dropKind : undefined);
   const unloadAt = arriveAt + wait;
   const hours = unloadAt - world.simHours;
   const mpg = spec.mpg || 7;
@@ -1659,7 +1723,7 @@ export function previewLoop(
     driven = leg.driven;
     broke = leg.broke;
     const rollup = when + leg.elapsed;
-    const wait = dockWait(rollup, shipment.toZip);
+    const wait = dockWait(rollup, shipment.toZip, shipment.dropKind);
     const arriveAt = rollup + wait;
     if (wait > 2) {
       driven = 0;
@@ -1812,6 +1876,8 @@ export function acceptJob(
       status: "booked",
       vehicleId: vehicle.id,
       lateNoted: false,
+      pickupKind: item.pickupKind,
+      dropKind: item.dropKind,
     };
     made.push(shipment);
     company.shipments.push(shipment);
@@ -2057,6 +2123,39 @@ export function repairVehicle(world: World, vehicleId: string): string | null {
   const cost = Math.round(((100 - vehicle.condition) / 100) * 0.1 * vehicle.price);
   vehicle.condition = 100;
   pushCash(world, company, -cost, `Repairs cost ${money(cost)}. Mileage stays ${Math.round(vehicle.mileage).toLocaleString("en-US")}.`, "info");
+  return null;
+}
+
+export function yardPrice(zip: string): { zip: string; price: number; payloadCap: number; cubeCap: number } | null {
+  const place = lookupZip(zip);
+  if (!place) return null;
+  const weight = hubs[place.hub]?.weight ?? 1;
+  return {
+    zip: place.zip,
+    price: Math.min(4_000_000, 160000 + weight * 12000),
+    payloadCap: 14000 + weight * 2800,
+    cubeCap: 2400 + weight * 450,
+  };
+}
+
+export function buildYard(world: World, zip: string): string | null {
+  const company = world.company;
+  if (!company || company.closed) return "The company is closed.";
+  const quote = yardPrice(zip);
+  if (!quote) return "That ZIP code is not on this map.";
+  if (company.warehouses.some((yard) => yard.zip === quote.zip)) return "You already have a warehouse in that ZIP.";
+  if (company.cash < quote.price) return `You need ${money(quote.price)}.`;
+  const yard: Warehouse = {
+    id: uid(world, "yard"),
+    zip: quote.zip,
+    starter: false,
+    payloadCap: quote.payloadCap,
+    cubeCap: quote.cubeCap,
+    price: quote.price,
+  };
+  company.warehouses.push(yard);
+  refillApplicants(world, yard);
+  pushCash(world, company, -quote.price, `Warehouse built in ${labelPlace(quote.zip)} for ${money(quote.price)}.`, "good");
   return null;
 }
 
@@ -2506,11 +2605,15 @@ function moveVehicle(world: World, company: Company, vehicle: Vehicle, dt: numbe
   }
   if (vehicle.traveled >= vehicle.routeMiles - 0.05) {
     const leg = vehicle.legs[0];
-    if (leg?.kind === "loaded" && vehicle.status !== "inbound") {
-      const wait = dockWait(world.simHours, leg.toZip);
+    if ((leg?.kind === "loaded" || leg?.kind === "pickup") && vehicle.status !== "inbound") {
+      const shipment = leg.shipmentId ? company.shipments.find((item) => item.id === leg.shipmentId) : undefined;
+      const kind = leg.kind === "pickup" ? shipment?.pickupKind : shipment?.dropKind;
+      const wait = dockWait(world.simHours, leg.toZip, kind);
       if (wait > 0.05) {
+        const close = kind === "commercial" ? "5pm" : "8pm";
+        const what = kind === "commercial" ? "commercial stop" : kind === "residential" ? "house stop" : "stop";
         if (vehicle.restUntil == null || vehicle.restUntil <= world.simHours) {
-          log(world, `Dock is closed in ${labelPlace(leg.toZip)}. The truck waits until 8am local.`, "info");
+          log(world, `The ${what} in ${labelPlace(leg.toZip)} is closed. It is open 8am to ${close} local.`, "info");
         }
         vehicle.restUntil = world.simHours + wait;
         if (wait > 2) writeDuty(driver, vehicle, 0, false, vehicle.restUntil);

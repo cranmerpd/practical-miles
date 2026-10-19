@@ -46,17 +46,8 @@ export function Fleet() {
           </Button>
         </div>
       </Panel>
-      {company.vehicles.length > 0 ? (
-        <Panel title="Equipment">
-          <ul className="space-y-4">
-            {company.vehicles.map((vehicle) => (
-              <Owned key={vehicle.id} vehicle={vehicle} />
-            ))}
-          </ul>
-        </Panel>
-      ) : null}
       {buying || company.vehicles.length === 0 ? (
-        <Panel title="For sale" extra={<span className="text-sm text-ink/60">{world.listings.length} listed</span>}>
+        <Panel title="For sale" extra={<span className="text-sm text-ink/60">{world.listings.length} listed, within about 400 miles of a yard</span>}>
           {world.listings.length === 0 ? (
             <p className="text-sm text-ink/70">Sellers are still posting trucks.</p>
           ) : (
@@ -66,6 +57,15 @@ export function Fleet() {
               ))}
             </ul>
           )}
+        </Panel>
+      ) : null}
+      {company.vehicles.length > 0 ? (
+        <Panel title="Equipment">
+          <ul className="space-y-4">
+            {company.vehicles.map((vehicle) => (
+              <Owned key={vehicle.id} vehicle={vehicle} />
+            ))}
+          </ul>
         </Panel>
       ) : null}
     </div>

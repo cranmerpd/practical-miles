@@ -1,5 +1,5 @@
 import { labelPlace, planRoad } from "@/game/geo";
-import { gameDate, KIND_INFO, shipmentsOn, type Company, type Vehicle, type World } from "@/game/sim";
+import { gameDate, KIND_INFO, shipmentsOn, tripEta, type Company, type StopKind, type Vehicle, type World } from "@/game/sim";
 
 export type TripRead = {
   vehicle: Vehicle;
@@ -17,6 +17,8 @@ export type TripRead = {
   lateFee: boolean;
   dueAt: number | null;
   stopsLeft: number;
+  dues: { toZip: string; dueAt: number }[];
+  etas: number[];
 };
 
 const LEG: Record<string, string> = {
@@ -58,6 +60,29 @@ export function readTrip(world: World, company: Company, vehicle: Vehicle): Trip
   const leg = vehicle.legs[0];
   const next = vehicle.legs.find((item) => item.kind === "loaded" && item.shipmentId);
   const nextShipment = next ? carried.find((item) => item.id === next.shipmentId) : carried[0];
+  const driver = company.drivers.find((item) => item.id === vehicle.driverId);
+  const dues = vehicle.legs.flatMap((item) => {
+    if (item.kind !== "loaded" || !item.shipmentId) return [];
+    const shipment = carried.find((row) => row.id === item.shipmentId);
+    return shipment ? [{ toZip: item.toZip, dueAt: shipment.dueAt }] : [];
+  });
+  let when = world.simHours;
+  let driven = driver?.driveToday ?? vehicle.driveToday;
+  let broke = Boolean(driver?.breakTaken ?? vehicle.breakTaken);
+  let fromZip = vehicle.zip;
+  const etas = vehicle.legs.map((item, index) => {
+    const miles = index === 0 ? Math.max(0, vehicle.routeMiles - vehicle.traveled) : (planRoad(fromZip, item.toZip)?.miles ?? 0);
+    const shipment = item.shipmentId ? company.shipments.find((row) => row.id === item.shipmentId) : undefined;
+    const kind: StopKind | undefined = item.kind === "pickup" ? shipment?.pickupKind : item.kind === "loaded" ? shipment?.dropKind : undefined;
+    const dock = item.kind === "pickup" || item.kind === "loaded";
+    const step = tripEta(when, miles, spec.cruise || 55, driver?.skill ?? 50, driven, broke, item.toZip, kind, dock);
+    when = step.at;
+    driven = step.driven;
+    broke = step.broke;
+    fromZip = item.toZip;
+    return step.at;
+  });
+  const loadedAlready = carried.length > 0 && leg?.kind === "pickup";
   return {
     vehicle,
     milesLeft,
@@ -68,12 +93,14 @@ export function readTrip(world: World, company: Company, vehicle: Vehicle): Trip
     deposit,
     balance,
     afterFuel: balance - burn,
-    leg: inbound ? LEG.inbound : leg ? LEG[leg.kind] : "Out",
+    leg: inbound ? LEG.inbound : loadedAlready ? "Loaded, next pickup" : leg ? LEG[leg.kind] : "Out",
     heading: leg ? labelPlace(leg.toZip) : labelPlace(vehicle.zip),
-    driverName: company.drivers.find((driver) => driver.id === vehicle.driverId)?.name ?? null,
+    driverName: driver?.name ?? null,
     lateFee: Boolean(nextShipment?.lateFee),
     dueAt: nextShipment?.dueAt ?? null,
     stopsLeft: vehicle.legs.filter((item) => item.kind === "loaded").length,
+    dues,
+    etas,
   };
 }
 

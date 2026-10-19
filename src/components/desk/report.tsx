@@ -1,9 +1,11 @@
+import { useState } from "react";
 import { labelPlace } from "@/game/geo";
 import { KIND_INFO, localDay, money, type DeliveryRecord } from "@/game/sim";
 import { cubes, Panel, pounds, useWorld } from "@/components/desk/bits";
 
 export function Report() {
   const { world, company } = useWorld();
+  const [shown, setShown] = useState(7);
   if (!company) return null;
   const rows = company.deliveries ?? [];
   if (rows.length === 0) {
@@ -33,6 +35,7 @@ export function Report() {
   }
   const days = [...groups.values()].sort((a, b) => b.at - a.at);
   for (const day of days) day.rows.sort((a, b) => (b.at ?? 0) - (a.at ?? 0));
+  const visible = days.slice(0, shown);
 
   return (
     <div className="space-y-4">
@@ -47,7 +50,7 @@ export function Report() {
           Days follow the clock at your home warehouse. The time on each card is local at the dock. Empty miles back to the yard are not on these cards.
         </p>
       </Panel>
-      {days.map((day) => {
+      {visible.map((day) => {
         const dayNet = day.rows.reduce((sum, row) => sum + (row.payout ?? 0) - row.damage, 0);
         return (
           <section key={day.key} className="space-y-3">
@@ -63,7 +66,12 @@ export function Report() {
           </section>
         );
       })}
-      {earlier.length > 0 ? (
+      {days.length > shown ? (
+        <button type="button" className="min-h-11 border border-ink/20 px-4 text-sm font-semibold uppercase tracking-wide" onClick={() => setShown((value) => value + 7)}>
+          Older days ({days.length - shown} left)
+        </button>
+      ) : null}
+      {earlier.length > 0 && shown >= days.length ? (
         <section className="space-y-3">
           <header>
             <h2 className="font-display text-2xl uppercase leading-none tracking-tight">Before the report</h2>

@@ -24,17 +24,22 @@ export function Road() {
   return (
     <div className="space-y-4">
       {trips.map((trip) => (
-        <TripCard key={trip.vehicle.id} trip={trip} diesel={world.diesel} simHours={world.simHours} />
+        <TripCard key={trip.vehicle.id} trip={trip} diesel={world.diesel} simHours={world.simHours} company={company} />
       ))}
     </div>
   );
 }
 
-function TripCard({ trip, diesel, simHours }: { trip: TripRead; diesel: number; simHours: number }) {
+function TripCard({ trip, diesel, simHours, company }: { trip: TripRead; diesel: number; simHours: number; company: { shipments: { id: string; pickupKind?: "commercial" | "residential"; dropKind?: "commercial" | "residential" }[] } }) {
   const spec = KIND_INFO[trip.vehicle.kind];
-  const dest = trip.vehicle.legs[0]?.toZip || trip.vehicle.zip;
+  const leg0 = trip.vehicle.legs[0];
+  const dest = leg0?.toZip || trip.vehicle.zip;
+  const shipment = leg0?.shipmentId ? company.shipments.find((item) => item.id === leg0.shipmentId) : undefined;
+  const kind = leg0?.kind === "pickup" ? shipment?.pickupKind : shipment?.dropKind;
   const there = localDay(simHours, dest);
-  const closed = trip.leg === "Loaded" && dockWait(simHours, dest) > 0.05;
+  const stop = leg0?.kind === "loaded" || leg0?.kind === "pickup";
+  const closed = stop && dockWait(simHours, dest, kind) > 0.05;
+  const closeLabel = kind === "commercial" ? "5pm" : "8pm";
   const atDock = trip.vehicle.routeMiles > 0 && trip.vehicle.traveled >= trip.vehicle.routeMiles - 0.2;
   const resting = trip.vehicle.restUntil != null && simHours < trip.vehicle.restUntil;
   const short = trip.pay > 0 && trip.afterFuel < 0;
@@ -47,9 +52,9 @@ function TripCard({ trip, diesel, simHours }: { trip: TripRead; diesel: number; 
       </p>
       <p className="mt-2 text-sm text-ink/70">
         {closed && resting && atDock
-          ? `Waiting at the dock. It is ${there.clock} there. The dock opens at 8am local.`
+          ? `Waiting at the stop. It is ${there.clock} there. Open 8am to ${closeLabel} local.`
           : closed
-            ? `Still rolling. It is ${there.clock} at the dock, which is closed until 8am local. The truck waits only if it arrives before then.`
+            ? `Still rolling. It is ${there.clock} at the stop, which is closed. Open 8am to ${closeLabel} local. The truck waits only if it gets there outside those hours.`
             : resting
               ? `Resting until ${localDay(trip.vehicle.restUntil ?? simHours, dest).clock} local.`
               : trip.vehicle.status === "inbound"
@@ -65,7 +70,7 @@ function TripCard({ trip, diesel, simHours }: { trip: TripRead; diesel: number; 
             key={`leg-${index}`}
             mark={index === 0 ? "Now" : "Next"}
             text={legText(leg)}
-            detail={index === 0 ? milesOnLeg(trip.vehicle.routeMiles, trip.vehicle.traveled) : undefined}
+            detail={[index === 0 ? milesOnLeg(trip.vehicle.routeMiles, trip.vehicle.traveled) : null, etaText(trip.etas[index], leg.toZip)].filter(Boolean).join(" · ")}
             live={index === 0}
           />
         ))}
@@ -92,11 +97,25 @@ function TripCard({ trip, diesel, simHours }: { trip: TripRead; diesel: number; 
           {trip.cashForFuel + 1 < trip.burn ? ` About ${money(trip.burn - trip.cashForFuel)} of the fuel is already in the tank, so less cash has to leave the bank.` : ""}
         </p>
       ) : null}
-      {trip.dueAt != null ? <p className="mt-2 text-sm text-ink/60">{dueDayLabel(simHours, trip.dueAt, dest)}.</p> : null}
+      {trip.dues.length > 0 ? (
+        <ul className="mt-2 space-y-1 text-sm text-ink/60">
+          {trip.dues.map((due) => (
+            <li key={`${due.toZip}-${due.dueAt}`}>
+              {labelPlace(due.toZip)} · {dueDayLabel(simHours, due.dueAt, due.toZip)}
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {trip.lateFee ? <p className="mt-1 text-sm text-ink/60">Marked load. If it is late, 20% of the original pay comes off the unpaid balance each day.</p> : null}
       <p className="mt-2 text-sm text-ink/45">Diesel moves. This uses today's price, not a locked quote.</p>
     </Panel>
   );
+}
+
+function etaText(at: number | undefined, zip: string): string | null {
+  if (at == null) return null;
+  const day = localDay(at, zip);
+  return `ETA ${day.short} ${day.clock}`;
 }
 
 function milesOnLeg(routeMiles: number, traveled: number): string {

@@ -4,6 +4,7 @@ import { MapBoard } from "@/components/desk/map-board";
 import { Frame, Log } from "@/components/desk/desk";
 import { Notice, PageTitle, useWorld } from "@/components/desk/bits";
 import { useDesk } from "@/game/store";
+import { money } from "@/game/sim";
 import { Button } from "@/components/ui/button";
 
 export function Overview() {
@@ -16,6 +17,7 @@ export function Overview() {
   const active = company.shipments.filter((shipment) => shipment.status === "rolling" || shipment.status === "booked").length;
   const stored = company.shipments.filter((shipment) => shipment.status === "stored").length;
   const road = world.jobs.filter((job) => job.mode === "road").length;
+  const yours = company.deliveries.reduce((sum, row) => sum + (row.payout ?? 0), 0);
 
   return (
     <Frame>
@@ -27,6 +29,27 @@ export function Overview() {
         <Count label="Yards" value={String(company.warehouses.length)} hint={stored === 0 ? "No freight stored" : `${stored} stored`} />
         <Count label="Loads" value={String(active)} hint={`${road} on the board`} />
       </dl>
+      <section className="border border-ink/10">
+        <h2 className="border-b border-ink/10 px-4 py-3 text-xs uppercase tracking-widest text-ink/45">Freight taken</h2>
+        <ul>
+          <li className="flex items-baseline justify-between gap-4 px-4 py-3 text-sm">
+            <span>You</span>
+            <span className="tabular-nums">{money(yours)}</span>
+          </li>
+          {world.rivals.map((rival) => {
+            const out = rival.trucks.filter((truck) => truck.status !== "idle").length;
+            return (
+              <li key={rival.id} className="flex items-baseline justify-between gap-4 border-t border-ink/10 px-4 py-3 text-sm">
+                <span>
+                  {rival.name}
+                  <span className="text-ink/45"> · {rival.closed ? "closed" : `${out} of ${rival.trucks.length} out`}</span>
+                </span>
+                <span className="tabular-nums">{money(rival.earned ?? 0)}</span>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
       <Log />
       <div className="flex flex-wrap gap-2">
         <Button

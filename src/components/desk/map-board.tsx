@@ -135,7 +135,7 @@ export function MapBoard({ route }: { route: MapPoint[] | null }) {
         })}
         {world.rivals.flatMap((rival) =>
           (Array.isArray(rival.trucks) ? rival.trucks : []).flatMap((truck) => {
-            if (truck.status !== "enroute" || !truck.points?.length || !truck.miles) return [];
+            if (truck.status === "idle" || !truck.points?.length || !truck.miles) return [];
             const at = pointAlong(truck.points, Math.min(truck.traveled ?? 0, truck.miles), truck.miles);
             const [x, y] = project(at.lat, at.lon);
             const id = `rival-truck:${truck.id}`;
@@ -273,11 +273,16 @@ function MapNote({ hot }: { hot: string | null }) {
       const truck = Array.isArray(rival.trucks) ? rival.trucks.find((item) => item.id === id) : undefined;
       if (!truck) continue;
       const left = Math.max(0, Math.round((truck.miles ?? 0) - (truck.traveled ?? 0)));
-      const from = truck.fromZip ? labelPlace(truck.fromZip) : "origin";
-      const to = truck.toZip ? labelPlace(truck.toZip) : "destination";
+      const leg = truck.legs?.[0];
+      const driver = rival.drivers?.find((item) => item.id === truck.driverId);
+      const where = `${truck.fromZip ? labelPlace(truck.fromZip) : "here"} to ${truck.toZip ? labelPlace(truck.toZip) : "there"}`;
+      const body = leg?.kind === "empty"
+        ? `empty, ${where}. ${left.toLocaleString("en-US")} miles left.`
+        : `${(leg?.weight ?? 0).toLocaleString("en-US")} lb, ${where}. ${left.toLocaleString("en-US")} miles left${leg?.pay ? `, pays ${money(leg.pay)}` : ""}.`;
       return (
         <p className="border-t border-ink/10 px-3 py-2 text-sm">
-          <span className="font-medium">{rival.name}</span> · {from} to {to}. {left.toLocaleString("en-US")} miles left.
+          <span className="font-medium">{rival.name}</span>
+          {driver ? ` · ${driver.name}` : ""} · {body}
         </p>
       );
     }

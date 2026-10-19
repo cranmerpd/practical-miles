@@ -1,0 +1,1 @@
+import{t as e}from"./desk-D59uL7SO.js";var t=e;export{t as component};

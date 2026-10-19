@@ -142,7 +142,25 @@ export type Listing = {
 
 export type Applicant = Driver;
 
-export type Rival = { id: string; name: string; hue: number; trucks: number };
+export type RivalTruck = {
+  id: string;
+  yardZip: string;
+  status: "idle" | "enroute";
+  fromZip?: string;
+  toZip?: string;
+  points?: MapPoint[];
+  miles?: number;
+  traveled?: number;
+};
+
+export type Rival = {
+  id: string;
+  name: string;
+  hue: number;
+  hqZip?: string;
+  yards?: string[];
+  trucks: RivalTruck[];
+};
 
 export type LogLine = { id: string; at: number; text: string; tone: "info" | "good" | "bad" };
 
@@ -517,16 +535,7 @@ export function blankWorld(seed = 20260302): World {
     rng: seed,
     diesel: 3.9,
     jobs: [],
-    rivals: [
-      { id: "r1", name: "Northline", hue: 210, trucks: 40 },
-      { id: "r2", name: "Red Pier", hue: 4, trucks: 22 },
-      { id: "r3", name: "Harbor Range", hue: 168, trucks: 18 },
-      { id: "r4", name: "Ash Cargo", hue: 28, trucks: 11 },
-      { id: "r5", name: "Lantern Freight", hue: 45, trucks: 9 },
-      { id: "r6", name: "Sable Cartage", hue: 250, trucks: 7 },
-      { id: "r7", name: "Copper State", hue: 16, trucks: 6 },
-      { id: "r8", name: "Millwright", hue: 90, trucks: 5 },
-    ],
+    rivals: [],
     ghosts: [],
     listings: [],
     company: null,
@@ -555,10 +564,11 @@ export function warmWorld(world: World): void {
       person.restUntil = person.vehicleId ? (truck?.restUntil ?? null) : null;
     }
   }
-  if (world.jobs.length < 20) refillBoard(world, 28, 6);
+  if (world.jobs.length < 20) refillBoard(world, 28);
   else if (world.company) refillBoard(world);
+  world.jobs = world.jobs.filter((job) => job.mode === "road");
   if (world.listings.length < 4) refillListings(world);
-  if (world.ghosts.length < 6) refillGhosts(world);
+  ensureRivals(world);
 }
 
 function easeDeadlines(world: World) {
@@ -717,7 +727,7 @@ function makeLocalJob(world: World): MarketJob | null {
   };
 }
 
-function refillBoard(world: World, roadTarget = 36, otherTarget = 6) {
+function refillBoard(world: World, roadTarget = 36) {
   if (world.company) {
     let local = world.jobs.filter((job) => job.mode === "road" && job.miles <= 180 && job.weight <= 2800 && job.cube <= 400).length;
     let tries = 0;
@@ -729,19 +739,12 @@ function refillBoard(world: World, roadTarget = 36, otherTarget = 6) {
     }
   }
   let road = world.jobs.filter((job) => job.mode === "road" && job.miles > 180).length;
-  let other = world.jobs.filter((job) => job.mode !== "road").length;
   let guard = 0;
   while (road < roadTarget && guard++ < roadTarget + 20) {
     const job = makeJob(world, "road");
     if (!job) break;
     world.jobs.push(job);
     road++;
-  }
-  while (other < otherTarget && guard++ < roadTarget + otherTarget + 30) {
-    const job = makeJob(world, rngNext(world) < 0.5 ? "air" : "sea");
-    if (!job) break;
-    world.jobs.push(job);
-    other++;
   }
 }
 
@@ -764,20 +767,132 @@ function refillListings(world: World) {
   }
 }
 
-function refillGhosts(world: World) {
-  while (world.ghosts.length < 10) {
-    const rival = pick(world, world.rivals);
-    const a = hubs[ri(world, hubs.length)];
-    const b = hubs[ri(world, hubs.length)];
-    const plan = planRoad(a.zip, b.zip);
-    if (!plan || plan.miles < 80) continue;
-    world.ghosts.push({
-      id: uid(world, "ghost"),
-      name: rival.name,
-      points: plan.points,
-      miles: plan.miles,
-      traveled: rngNext(world) * plan.miles,
+const CARRIER_NAMES = [
+  "Northline",
+  "Red Pier",
+  "Harbor Range",
+  "Ash Cargo",
+  "Lantern Freight",
+  "Sable Cartage",
+  "Copper State",
+  "Millwright",
+  "High Bend",
+  "Glass Road",
+  "Little Wake",
+  "Iron Orchard",
+  "Pale Mile",
+  "Second Lock",
+  "Dry County",
+  "Low Bridge",
+  "Kettle Route",
+  "White Oak Haul",
+  "Plain State",
+  "Far Yard",
+  "Cold Spring Cartage",
+  "Red Clay",
+  "Even Mile",
+];
+
+const SIZE_BANDS = [
+  { lo: 22, hi: 36, yards: 3 },
+  { lo: 10, hi: 16, yards: 2 },
+  { lo: 5, hi: 8, yards: 1 },
+  { lo: 2, hi: 4, yards: 0 },
+] as const;
+
+function rivalsAreLive(world: World): boolean {
+  return world.rivals.length === 4 && world.rivals.every((rival) => Array.isArray(rival.trucks) && Boolean(rival.hqZip));
+}
+
+function rollRivals(world: World): Rival[] {
+  const names = [...CARRIER_NAMES];
+  const taken = new Set<string>();
+  for (const yard of world.company?.warehouses ?? []) taken.add(yard.zip);
+  const big = [...hubs].filter((hub) => hub.weight >= 15).sort((a, b) => b.weight - a.weight);
+  const hues = [210, 4, 168, 28, 45, 250, 16, 90];
+  const rivals: Rival[] = [];
+  for (let i = 0; i < SIZE_BANDS.length; i++) {
+    const band = SIZE_BANDS[i];
+    const name = names.splice(ri(world, names.length), 1)[0];
+    const apart = big.find((hub) => !taken.has(hub.zip) && [...taken].every((zip) => {
+      const place = lookupZip(zip);
+      return !place || havMiles(place.lat, place.lon, hub.lat, hub.lon) > 280;
+    }));
+    const home = apart ?? big.find((hub) => !taken.has(hub.zip));
+    if (!home) continue;
+    taken.add(home.zip);
+    const yards: string[] = [];
+    const pool = hubs.filter((hub) => {
+      if (hub.zip === home.zip || taken.has(hub.zip)) return false;
+      const away = havMiles(home.lat, home.lon, hub.lat, hub.lon);
+      return away > 80 && away < 520;
     });
+    while (yards.length < band.yards && pool.length) {
+      const hub = pool.splice(ri(world, pool.length), 1)[0];
+      yards.push(hub.zip);
+      taken.add(hub.zip);
+    }
+    const count = band.lo + ri(world, band.hi - band.lo + 1);
+    const homes = [home.zip, ...yards];
+    const trucks: RivalTruck[] = [];
+    for (let n = 0; n < count; n++) {
+      trucks.push({ id: uid(world, "rtruck"), yardZip: homes[n % homes.length], status: "idle" });
+    }
+    rivals.push({ id: uid(world, "rival"), name, hue: hues[i], hqZip: home.zip, yards, trucks });
+  }
+  return rivals;
+}
+
+function nearPlayerYard(world: World, zip: string): boolean {
+  const from = lookupZip(zip);
+  if (!from || !world.company) return false;
+  return world.company.warehouses.some((yard) => {
+    const place = lookupZip(yard.zip);
+    return Boolean(place && havMiles(place.lat, place.lon, from.lat, from.lon) < 80);
+  });
+}
+
+function rivalTake(world: World, rival: Rival, quiet: boolean): boolean {
+  if (!rival.hqZip || !Array.isArray(rival.trucks)) return false;
+  const truck = rival.trucks.find((item) => item.status !== "enroute");
+  if (!truck) return false;
+  const bases = [rival.hqZip, ...(rival.yards ?? [])].flatMap((zip) => {
+    const place = lookupZip(zip);
+    return place ? [place] : [];
+  });
+  if (!bases.length) return false;
+  const rep = world.company?.rep ?? 35;
+  const roads = world.jobs.filter((job) => {
+    if (job.mode !== "road" || job.id === world.heldJobId) return false;
+    if (rep >= 40 && job.miles <= 180 && nearPlayerYard(world, job.fromZip)) return false;
+    const from = lookupZip(job.fromZip);
+    if (!from) return false;
+    const near = Math.min(...bases.map((base) => havMiles(base.lat, base.lon, from.lat, from.lon)));
+    return near <= 200;
+  });
+  if (!roads.length) return false;
+  roads.sort((a, b) => b.pay / Math.max(1, b.miles) - a.pay / Math.max(1, a.miles));
+  const job = roads[ri(world, Math.min(4, roads.length))];
+  const plan = planRoad(job.fromZip, job.toZip);
+  if (!plan) return false;
+  world.jobs = world.jobs.filter((item) => item.id !== job.id);
+  truck.status = "enroute";
+  truck.fromZip = job.fromZip;
+  truck.toZip = job.toZip;
+  truck.points = plan.points;
+  truck.miles = plan.miles;
+  truck.traveled = quiet ? rngNext(world) * plan.miles * 0.7 : 0;
+  if (!quiet) log(world, `${rival.name} took ${labelPlace(job.fromZip)} to ${labelPlace(job.toZip)}.`, "info");
+  return true;
+}
+
+function ensureRivals(world: World): void {
+  if (rivalsAreLive(world)) return;
+  world.ghosts = [];
+  world.rivals = rollRivals(world);
+  for (const rival of world.rivals) {
+    let guard = 0;
+    while (guard++ < rival.trucks.length && rivalTake(world, rival, true)) {}
   }
 }
 
@@ -2054,19 +2169,12 @@ function moveVehicle(world: World, company: Company, vehicle: Vehicle, dt: numbe
 }
 
 function rivalAct(world: World) {
-  if (!world.jobs.length) return;
+  if (!rivalsAreLive(world)) return;
   const rep = world.company?.rep ?? 35;
-  const appetite = rep < 40 ? 0.55 : rep > 70 ? 0.2 : 0.35;
+  const appetite = rep < 40 ? 0.7 : rep > 70 ? 0.35 : 0.5;
   for (const rival of world.rivals) {
     if (rngNext(world) > appetite) continue;
-    const roads = world.jobs.filter((job) => job.mode === "road" && job.id !== world.heldJobId);
-    if (!roads.length) return;
-    const longHaul = roads.filter((job) => job.miles > 180);
-    const pool = longHaul.length && rngNext(world) > 0.22 ? longHaul : roads;
-    pool.sort((a, b) => b.pay / b.miles - a.pay / a.miles);
-    const job = pool[ri(world, Math.min(4, pool.length))];
-    world.jobs = world.jobs.filter((item) => item.id !== job.id);
-    log(world, `${rival.name} took ${labelPlace(job.fromZip)} to ${labelPlace(job.toZip)}.`, "info");
+    rivalTake(world, rival, false);
   }
 }
 
@@ -2131,19 +2239,27 @@ export function advance(world: World, dtHours: number) {
         log(world, `${company.name} stayed negative for three months and is closed.`, "bad");
       }
     }
-    for (const ghost of world.ghosts) {
-      ghost.traveled += 55 * step;
-      if (ghost.traveled >= ghost.miles) {
-        ghost.traveled = ghost.miles;
+    for (const rival of world.rivals) {
+      if (!Array.isArray(rival.trucks)) continue;
+      for (const truck of rival.trucks) {
+        if (truck.status !== "enroute" || !truck.miles || !truck.points?.length) continue;
+        truck.traveled = (truck.traveled ?? 0) + 55 * step;
+        if (truck.traveled >= truck.miles - 0.05) {
+          truck.status = "idle";
+          truck.traveled = 0;
+          truck.miles = 0;
+          truck.points = [];
+          truck.fromZip = undefined;
+          truck.toZip = undefined;
+        }
       }
     }
-    world.ghosts = world.ghosts.filter((ghost) => ghost.traveled < ghost.miles - 0.1);
+    world.ghosts = [];
     if (Math.floor(world.simHours) !== hourBefore) {
       expireJobs(world);
       rivalAct(world);
       refillBoard(world);
       refillListings(world);
-      refillGhosts(world);
       if (company) {
         for (const yard of company.warehouses) refillApplicants(world, yard);
         refillYards(world);

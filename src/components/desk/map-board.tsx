@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { hubs, lookupZip, MAP, pointAlong, project, roadSegments, type MapPoint } from "@/game/geo";
-import { KIND_INFO, money, parkedMarks, type Vehicle } from "@/game/sim";
+import { hubs, labelPlace, lookupZip, MAP, pointAlong, project, roadSegments, type MapPoint } from "@/game/geo";
+import { KIND_INFO, money, type Vehicle } from "@/game/sim";
 import { useWorld } from "@/components/desk/bits";
 import { readTrip } from "@/components/desk/trip";
 
@@ -43,13 +43,6 @@ const CITIES = CITY_WANT.flatMap((item) => {
   if (!hub) return [];
   const [x, y] = project(hub.lat, hub.lon);
   return [{ name: item.name, x, y }];
-});
-
-const PARKED = parkedMarks().flatMap((mark) => {
-  const place = lookupZip(mark.zip);
-  if (!place) return [];
-  const [x, y] = project(place.lat, place.lon);
-  return [{ ...mark, x, y }];
 });
 
 function line(points: MapPoint[]): string {
@@ -111,49 +104,61 @@ export function MapBoard({ route }: { route: MapPoint[] | null }) {
             </g>
           );
         })}
-        {PARKED.map((mark, index) => {
-          const id = `park:${mark.kind}:${mark.name}:${index}`;
-          const on = hot === id;
-          return (
-            <g
-              key={id}
-              className="cursor-pointer"
-              transform={`translate(${mark.x + (mark.kind === "ship" ? 8 : -8)} ${mark.y + 8})`}
-              onPointerEnter={() => setHover(id)}
-              onPointerLeave={() => setHover((value) => (value === id ? null : value))}
-              onPointerDown={(event) => {
-                event.stopPropagation();
-                setPin((value) => (value === id ? null : id));
-              }}
-            >
-              {mark.kind === "plane" ? (
-                <polygon points="0,-5 4.5,4 -4.5,4" className={on ? "fill-ink" : "fill-ink/70"} transform={on ? "scale(1.35)" : undefined} />
-              ) : (
-                <rect x={-6} y={-3} width={12} height={6} rx={2} className={on ? "fill-pine" : "fill-pine/80"} transform={on ? "scale(1.25)" : undefined} />
-              )}
-            </g>
-          );
+        {world.rivals.flatMap((rival) => {
+          const sites = [
+            ...(rival.hqZip ? [{ zip: rival.hqZip, hq: true }] : []),
+            ...(rival.yards ?? []).map((zip) => ({ zip, hq: false })),
+          ];
+          return sites.flatMap((site) => {
+            const place = lookupZip(site.zip);
+            if (!place) return [];
+            const [x, y] = project(place.lat, place.lon);
+            const id = `rival-yard:${rival.id}:${site.zip}`;
+            const on = hot === id;
+            const color = `hsl(${rival.hue} 65% 62%)`;
+            const size = site.hq ? (on ? 7 : 5) : on ? 5 : 3.5;
+            return [
+              <g
+                key={id}
+                className="cursor-pointer"
+                onPointerEnter={() => setHover(id)}
+                onPointerLeave={() => setHover((value) => (value === id ? null : value))}
+                onPointerDown={(event) => {
+                  event.stopPropagation();
+                  setPin((value) => (value === id ? null : id));
+                }}
+              >
+                <rect x={x - size} y={y - size} width={size * 2} height={size * 2} fill="none" stroke={color} strokeWidth={site.hq ? 2 : 1.4} />
+              </g>,
+            ];
+          });
         })}
-        {world.ghosts.map((ghost) => {
-          const at = pointAlong(ghost.points, Math.min(ghost.traveled, ghost.miles), ghost.miles);
-          const [x, y] = project(at.lat, at.lon);
-          const id = `ghost:${ghost.id}`;
-          const on = hot === id;
-          return (
-            <g
-              key={ghost.id}
-              className="cursor-pointer"
-              onPointerEnter={() => setHover(id)}
-              onPointerLeave={() => setHover((value) => (value === id ? null : value))}
-              onPointerDown={(event) => {
-                event.stopPropagation();
-                setPin((value) => (value === id ? null : id));
-              }}
-            >
-              <circle cx={x} cy={y} r={on ? 6 : 3.2} className={on ? "fill-ink/70" : "fill-ink/35"} />
-            </g>
-          );
-        })}
+        {world.rivals.flatMap((rival) =>
+          (Array.isArray(rival.trucks) ? rival.trucks : []).flatMap((truck) => {
+            if (truck.status !== "enroute" || !truck.points?.length || !truck.miles) return [];
+            const at = pointAlong(truck.points, Math.min(truck.traveled ?? 0, truck.miles), truck.miles);
+            const [x, y] = project(at.lat, at.lon);
+            const id = `rival-truck:${truck.id}`;
+            const on = hot === id;
+            const color = `hsl(${rival.hue} 65% 62%)`;
+            const path = on ? line(truck.points) : "";
+            return [
+              <g
+                key={truck.id}
+                className="cursor-pointer"
+                onPointerEnter={() => setHover(id)}
+                onPointerLeave={() => setHover((value) => (value === id ? null : value))}
+                onPointerDown={(event) => {
+                  event.stopPropagation();
+                  setPin((value) => (value === id ? null : id));
+                }}
+              >
+                {path ? <path d={path} fill="none" stroke={color} strokeWidth={2} /> : null}
+                <circle cx={x} cy={y} r={on ? 6 : 3.4} fill={color} />
+              </g>,
+            ];
+          }),
+        )}
         {(company?.warehouses ?? []).map((yard) => {
           const place = lookupZip(yard.zip);
           if (!place) return null;
@@ -211,19 +216,13 @@ export function MapBoard({ route }: { route: MapPoint[] | null }) {
           <span className="size-2.5 rounded-full bg-rust" /> Your truck
         </span>
         <span className="inline-flex items-center gap-2">
-          <span className="size-2.5 rounded-full bg-ink/35" /> Other carrier
+          <span className="size-2.5 rounded-full bg-ink/50" /> Rival truck
         </span>
         <span className="inline-flex items-center gap-2">
           <span className="size-2.5 bg-pine" /> Your warehouse
         </span>
         <span className="inline-flex items-center gap-2">
-          <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden className="fill-ink/70">
-            <polygon points="5,0 10,10 0,10" />
-          </svg>
-          Parked plane
-        </span>
-        <span className="inline-flex items-center gap-2">
-          <span className="h-2 w-3.5 rounded-sm bg-pine/80" /> Parked ship
+          <span className="size-2.5 border border-ink/70" /> Rival yard
         </span>
       </figcaption>
     </figure>
@@ -268,15 +267,32 @@ function MapNote({ hot }: { hot: string | null }) {
   if (hot.startsWith("city:")) {
     return <p className="border-t border-ink/10 px-3 py-2 text-sm font-medium">{hot.slice(5)}</p>;
   }
-  if (hot.startsWith("ghost:")) {
-    const ghost = world.ghosts.find((item) => item.id === hot.slice(6));
-    return <p className="border-t border-ink/10 px-3 py-2 text-sm">{ghost ? `${ghost.name} · another carrier` : "Another carrier"}</p>;
+  if (hot.startsWith("rival-truck:")) {
+    const id = hot.slice("rival-truck:".length);
+    for (const rival of world.rivals) {
+      const truck = Array.isArray(rival.trucks) ? rival.trucks.find((item) => item.id === id) : undefined;
+      if (!truck) continue;
+      const left = Math.max(0, Math.round((truck.miles ?? 0) - (truck.traveled ?? 0)));
+      const from = truck.fromZip ? labelPlace(truck.fromZip) : "origin";
+      const to = truck.toZip ? labelPlace(truck.toZip) : "destination";
+      return (
+        <p className="border-t border-ink/10 px-3 py-2 text-sm">
+          <span className="font-medium">{rival.name}</span> · {from} to {to}. {left.toLocaleString("en-US")} miles left.
+        </p>
+      );
+    }
   }
-  if (hot.startsWith("park:")) {
-    const [, kind, name] = hot.split(":");
+  if (hot.startsWith("rival-yard:")) {
+    const rest = hot.slice("rival-yard:".length);
+    const split = rest.indexOf(":");
+    const id = rest.slice(0, split);
+    const zip = rest.slice(split + 1);
+    const rival = world.rivals.find((item) => item.id === id);
+    if (!rival) return null;
+    const kind = rival.hqZip === zip ? "headquarters" : "warehouse";
     return (
       <p className="border-t border-ink/10 px-3 py-2 text-sm">
-        {name} {kind === "plane" ? "plane" : "ship"}, parked. Not yours.
+        <span className="font-medium">{rival.name}</span> {kind} · {labelPlace(zip)}.
       </p>
     );
   }

@@ -1,0 +1,1 @@
+import{t as e}from"./desk-BKk4PPv3.js";var t=e;export{t as component};

@@ -21,11 +21,23 @@ export function Road() {
     );
   }
 
+  const miles = trips.reduce((sum, trip) => sum + trip.milesLeft, 0);
+  const owed = trips.reduce((sum, trip) => sum + trip.balance, 0);
+  const after = trips.reduce((sum, trip) => sum + (trip.pay > 0 ? trip.afterFuel : -trip.burn), 0);
+
   return (
-    <div className="space-y-4">
-      {trips.map((trip) => (
-        <TripCard key={trip.vehicle.id} trip={trip} diesel={world.diesel} simHours={world.simHours} company={company} />
-      ))}
+    <div className="space-y-3">
+      <dl className="grid grid-cols-2 border border-ink/10 sm:grid-cols-4">
+        <Stat label="Moving" value={String(trips.length)} />
+        <Stat label="Miles left" value={Math.round(miles).toLocaleString("en-US")} />
+        <Stat label="Still owed" value={money(owed)} />
+        <Stat label="After fuel" value={money(after)} alert={after < 0} />
+      </dl>
+      <div className="grid items-start gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {trips.map((trip) => (
+          <TripCard key={trip.vehicle.id} trip={trip} diesel={world.diesel} simHours={world.simHours} company={company} />
+        ))}
+      </div>
     </div>
   );
 }
@@ -109,6 +121,14 @@ function TripCard({ trip, diesel, simHours, company }: { trip: TripRead; diesel:
   );
 }
 
+function Stat({ label, value, alert = false }: { label: string; value: string; alert?: boolean }) {
+  return (
+    <div className="border-ink/10 p-3 odd:border-r sm:border-r sm:last:border-r-0">
+      <dt className="text-[10px] uppercase tracking-widest text-ink/45">{label}</dt>
+      <dd className={`font-display text-2xl leading-none tabular-nums ${alert ? "text-rust" : ""}`}>{value}</dd>
+    </div>
+  );
+}
 function etaText(at: number | undefined, zip: string): string | null {
   if (at == null) return null;
   const day = localDay(at, zip);
@@ -133,7 +153,7 @@ function legText(leg: Leg): string {
 
 function LegRow({ mark, text, detail, live = false }: { mark: string; text: string; detail?: string; live?: boolean }) {
   return (
-    <li className="flex items-baseline justify-between gap-3 px-3 py-2 text-sm">
+    <li className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 px-3 py-2 text-sm">
       <span>
         <span className={`mr-3 text-[10px] font-medium uppercase tracking-[0.18em] ${live ? "text-pine" : mark === "Done" ? "text-ink/35" : "text-ink/55"}`}>{mark}</span>
         <span className={mark === "Done" ? "text-ink/45" : ""}>{text}</span>

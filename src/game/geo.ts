@@ -169,7 +169,9 @@ export function planRoad(fromZip: string, toZip: string): RoadPlan | null {
       routed = { miles, highwayMiles: highway.miles, localMiles: Math.round(startLocal + endLocal), points };
     }
   }
-  if (!routed || direct + 15 < routed.miles) return asDirect();
+  if (!routed) return asDirect();
+  const nearby = from.hub === to.hub || direct <= 80;
+  if (nearby && direct + 15 < routed.miles) return asDirect();
   return routed;
 }
 

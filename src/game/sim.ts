@@ -689,6 +689,35 @@ export function warmWorld(world: World): void {
   refillListings(world);
   snapLeadDays(world);
   ensureRivals(world);
+  redrawHighways(world);
+}
+
+function redrawHighways(world: World) {
+  const company = world.company;
+  if (company) {
+    for (const vehicle of company.vehicles) {
+      const leg = vehicle.legs[0];
+      if (!leg || !vehicle.route || vehicle.route.length > 2) continue;
+      const plan = planRoad(vehicle.zip, leg.toZip);
+      if (!plan || plan.points.length < 3 || plan.miles <= 0) continue;
+      const done = vehicle.routeMiles > 0 ? Math.min(1, vehicle.traveled / vehicle.routeMiles) : 0;
+      vehicle.route = plan.points;
+      vehicle.routeMiles = plan.miles;
+      vehicle.traveled = done * plan.miles;
+    }
+  }
+  for (const rival of world.rivals ?? []) {
+    for (const truck of rival.trucks ?? []) {
+      const leg = truck.legs?.[0];
+      if (!leg || !truck.points || truck.points.length > 2) continue;
+      const plan = planRoad(truck.zip, leg.toZip);
+      if (!plan || plan.points.length < 3 || plan.miles <= 0) continue;
+      const done = truck.miles && truck.miles > 0 ? Math.min(1, (truck.traveled ?? 0) / truck.miles) : 0;
+      truck.points = plan.points;
+      truck.miles = plan.miles;
+      truck.traveled = done * plan.miles;
+    }
+  }
 }
 
 function snapLeadDays(world: World) {

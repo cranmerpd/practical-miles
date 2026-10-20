@@ -526,10 +526,11 @@ function leadClose(simHours: number, zip: string, days: number, kind?: StopKind)
   const place = lookupZip(zip);
   const off = place ? zoneOffset(place.state, place.lon, simHours) : -5;
   const close = kind === "commercial" ? 17 : 20;
-  const dayIndex = Math.floor((simHours + off) / 24) + days;
-  const first = dayIndex * 24 + close - off;
-  const off2 = place ? zoneOffset(place.state, place.lon, first) : off;
-  return dayIndex * 24 + close - off2;
+  const local = new Date(EPOCH + (simHours + off) * 3_600_000);
+  const clock = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate() + days, close);
+  let due = (clock - EPOCH) / 3_600_000 - off;
+  const off2 = place ? zoneOffset(place.state, place.lon, due) : off;
+  return (clock - EPOCH) / 3_600_000 - off2;
 }
 
 export function shipmentWhen(simHours: number, shipment: Shipment): string {
@@ -539,33 +540,27 @@ export function shipmentWhen(simHours: number, shipment: Shipment): string {
     const days = runDaysFor(miles);
     return days === 1 ? "1-day run" : `${days}-day run`;
   }
-  const when = localDay(shipment.dueAt, shipment.toZip).short;
-  const place = lookupZip(shipment.toZip);
-  const nowOff = place ? zoneOffset(place.state, place.lon, simHours) : -5;
-  const dueOff = place ? zoneOffset(place.state, place.lon, shipment.dueAt) : -5;
-  const diff = Math.floor((shipment.dueAt + dueOff) / 24) - Math.floor((simHours + nowOff) / 24);
-  if (diff < 0) return diff === -1 ? `1 day late · ${when}` : `${-diff} days late · ${when}`;
-  if (diff === 0) return `Deliver today, ${when}`;
-  if (diff === 1) return `Deliver tomorrow, ${when}`;
-  return `Deliver ${when}`;
+  const when = localDay(shipment.dueAt, shipment.toZip);
+  const diff = when.index - localDay(simHours, shipment.toZip).index;
+  if (diff < 0) return diff === -1 ? `1 day late · ${when.short}` : `${-diff} days late · ${when.short}`;
+  if (diff === 0) return `Deliver today, ${when.short}`;
+  if (diff === 1) return `Deliver tomorrow, ${when.short}`;
+  return `Deliver ${when.short}`;
 }
 
 export function dueDayLabel(simHours: number, dueAt: number, zip: string): string {
-  const place = lookupZip(zip);
-  const nowOff = place ? zoneOffset(place.state, place.lon, simHours) : -5;
-  const dueOff = place ? zoneOffset(place.state, place.lon, dueAt) : -5;
-  const diff = Math.floor((dueAt + 12 + dueOff) / 24) - Math.floor((simHours + 12 + nowOff) / 24);
-  if (diff < 0) return diff === -1 ? `1 day late · ${localDay(dueAt, zip).short}` : `${-diff} days late · ${localDay(dueAt, zip).short}`;
-  const when = localDay(dueAt, zip).short;
-  if (diff === 0) return `Due today, ${when}`;
-  if (diff === 1) return `Due tomorrow, ${when}`;
-  return `Due ${when}`;
+  const due = localDay(dueAt, zip);
+  const diff = due.index - localDay(simHours, zip).index;
+  if (diff < 0) return diff === -1 ? `1 day late · ${due.short}` : `${-diff} days late · ${due.short}`;
+  if (diff === 0) return `Due today, ${due.short}`;
+  if (diff === 1) return `Due tomorrow, ${due.short}`;
+  return `Due ${due.short}`;
 }
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
-export function localDay(simHours: number, zip: string): { key: string; label: string; short: string; clock: string } {
+export function localDay(simHours: number, zip: string): { key: string; index: number; label: string; short: string; clock: string } {
   const place = lookupZip(zip);
   const off = place ? zoneOffset(place.state, place.lon, simHours) : -5;
   const local = new Date(EPOCH + (simHours + off) * 3_600_000);
@@ -576,6 +571,7 @@ export function localDay(simHours: number, zip: string): { key: string; label: s
   const shortMonths = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   return {
     key: `${local.getUTCFullYear()}-${local.getUTCMonth()}-${local.getUTCDate()}`,
+    index: Math.floor(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate()) / 86_400_000),
     label: `${WEEKDAYS[local.getUTCDay()]}, ${MONTHS[local.getUTCMonth()]} ${local.getUTCDate()}`,
     short: `${shortDays[local.getUTCDay()]}, ${shortMonths[local.getUTCMonth()]} ${local.getUTCDate()}`,
     clock: `${h12}:${minute} ${hour < 12 ? "am" : "pm"}`,
@@ -2551,15 +2547,19 @@ function finishDelivery(world: World, company: Company, shipment: Shipment, vehi
   }
   if (payout > 0) pushCash(world, company, payout, `Delivery paid ${money(payout)}.`, "good");
   const where = labelPlace(shipment.toZip);
+  const dueDay = shipment.dueAt > 0 ? localDay(shipment.dueAt, shipment.toZip) : null;
+  const sameDay = dueDay != null && localDay(world.simHours, shipment.toZip).key === dueDay.key;
   notify(
     world,
     early
-      ? `Delivered early in ${where}. The appointment was ${localDay(shipment.dueAt, shipment.toZip).short}. Reputation drops a little.`
+      ? `Delivered early in ${where}. The appointment was ${dueDay?.short}. Reputation drops a little.`
       : late && shipment.lateFee
         ? `Delivered late in ${where}.${lateCut > 0 ? ` Late fee ${money(lateCut)}.` : ""} ${payout > 0 ? `${money(payout)} reached the bank.` : "Nothing left of the balance."}`
-        : late
-          ? `Delivered after ${localDay(shipment.dueAt, shipment.toZip).short} in ${where}. Reputation drops. ${payout > 0 ? `${money(payout)} reached the bank.` : "Nothing left of the balance."}`
-          : `Delivered in ${where}. ${money(payout)} reached the bank.`,
+        : late && sameDay
+          ? `Delivered after the dock closed on ${dueDay?.short} in ${where}. Reputation drops. ${payout > 0 ? `${money(payout)} reached the bank.` : "Nothing left of the balance."}`
+          : late
+            ? `Delivered after ${dueDay?.short} in ${where}. Reputation drops. ${payout > 0 ? `${money(payout)} reached the bank.` : "Nothing left of the balance."}`
+            : `Delivered in ${where}. ${money(payout)} reached the bank.`,
     late || early || payout <= 0 ? "bad" : "good",
   );
   const miles = vehicle.routeMiles > 1 ? vehicle.routeMiles : (planRoad(shipment.fromZip, shipment.toZip)?.miles ?? 0);

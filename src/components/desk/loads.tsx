@@ -141,7 +141,7 @@ export function Loads({ onRoute }: { onRoute: (points: MapPoint[] | null) => voi
   return (
     <div className="space-y-4">
       {held ? (
-        <div id="booking-card" className="sticky top-36 z-10">
+        <div id="booking-card" className="scroll-mt-36">
           <Booking job={held} onRoute={onRoute} onClose={() => holdJob(null)} />
         </div>
       ) : null}
@@ -183,7 +183,7 @@ export function Loads({ onRoute }: { onRoute: (points: MapPoint[] | null) => voi
                 <li key={job.id}>
                   <button
                     type="button"
-                    className="flex min-h-11 w-full flex-col gap-1 py-3 text-left"
+                    className={`w-full py-4 text-left ${heldRow ? "bg-ink/[0.04]" : ""}`}
                     onClick={() => holdJob(heldRow ? null : job.id)}
                   >
                     <span className="flex flex-wrap items-baseline justify-between gap-2">
@@ -194,19 +194,24 @@ export function Loads({ onRoute }: { onRoute: (points: MapPoint[] | null) => voi
                       </span>
                       <span className="tabular-nums font-semibold">{money(job.pay)}</span>
                     </span>
-                    <span className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-ink/70">
-                      <span className="tabular-nums">{job.miles.toLocaleString("en-US")} mi</span>
-                      <span className="tabular-nums">${(job.pay / Math.max(1, job.miles)).toFixed(2)}/mi</span>
-                      <span>{stopWords(job)}</span>
-                      <span>{pounds(job.weight)}</span>
-                      <span>{cubes(job.cube)}</span>
-                      <span>{dueDayLabel(world.simHours, job.postedAt + job.dueInHours, job.toZip)}</span>
-                      {job.miles <= 180 && job.weight <= 3500 && job.cube <= 400 ? <span>Van</span> : null}
-                      {job.fragile ? <span>Fragile</span> : null}
-                      {job.lateFee ? <span>Late fee</span> : null}
-                      <span className={fit.ok ? "text-pine" : "text-ink/50"}>{fit.label}</span>
-                      {heldRow ? <span className="text-rust">Open</span> : null}
-                    </span>
+                    <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
+                      <Fact label="Miles" value={`${job.miles.toLocaleString("en-US")} mi`} />
+                      <Fact label="Rate" value={`$${(job.pay / Math.max(1, job.miles)).toFixed(2)}/mi`} />
+                      <Fact label="Weight" value={pounds(job.weight)} />
+                      <Fact label="Cube" value={cubes(job.cube)} />
+                      <Fact label="Due" value={dueDayLabel(world.simHours, job.postedAt + job.dueInHours, job.toZip).replace(/^Due /, "")} />
+                      <Fact label="Pickup" value={windowWords(job.pickupKind)} />
+                      <Fact label="Delivery" value={windowWords(job.dropKind)} />
+                      <Fact label="Fit" value={fit.label} tone={fit.ok ? "pine" : "muted"} />
+                    </dl>
+                    {(job.miles <= 180 && job.weight <= 3500 && job.cube <= 400) || job.fragile || job.lateFee || heldRow ? (
+                      <span className="mt-3 flex flex-wrap gap-2">
+                        {job.miles <= 180 && job.weight <= 3500 && job.cube <= 400 ? <Tag>Van</Tag> : null}
+                        {job.fragile ? <Tag>Fragile</Tag> : null}
+                        {job.lateFee ? <Tag>Late fee</Tag> : null}
+                        {heldRow ? <Tag>Open</Tag> : null}
+                      </span>
+                    ) : null}
                   </button>
                 </li>
               );
@@ -218,14 +223,23 @@ export function Loads({ onRoute }: { onRoute: (points: MapPoint[] | null) => voi
   );
 }
 
-function stopWords(job: MarketJob): string {
-  if (!job.pickupKind && !job.dropKind) return "8am–8pm";
-  const side = (kind: MarketJob["pickupKind"], end: string) => {
-    if (kind === "commercial") return `Commercial ${end} 8–5`;
-    if (kind === "residential") return `House ${end} 8–8`;
-    return `${end} 8–8`;
-  };
-  return `${side(job.pickupKind, "pickup")} · ${side(job.dropKind, "delivery")}`;
+function windowWords(kind: MarketJob["pickupKind"]): string {
+  if (kind === "commercial") return "Commercial · 8am–5pm";
+  if (kind === "residential") return "House · 8am–8pm";
+  return "8am–8pm";
+}
+
+function Fact({ label, value, tone = "ink" }: { label: string; value: string; tone?: "ink" | "pine" | "muted" }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-[10px] font-medium uppercase tracking-[0.16em] text-ink/40">{label}</dt>
+      <dd className={`truncate text-sm tabular-nums ${tone === "pine" ? "text-pine" : tone === "muted" ? "text-ink/55" : ""}`}>{value}</dd>
+    </div>
+  );
+}
+
+function Tag({ children }: { children: string }) {
+  return <span className="border border-ink/15 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-ink/70">{children}</span>;
 }
 
 function Filter({ on, set, label }: { on: boolean; set: (value: boolean) => void; label: string }) {

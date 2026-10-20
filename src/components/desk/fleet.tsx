@@ -107,7 +107,6 @@ function Owned({ vehicle }: { vehicle: Vehicle }) {
   const drivers = company.drivers.filter((item) => !item.vehicleId && item.warehouseId && company.warehouses.some((yard) => yard.id === item.warehouseId && yard.zip === vehicle.zip));
   const eligible = drivers.filter((item) => (!spec.cdl || item.cdl) && !(item.restUntil != null && world.simHours < item.restUntil));
   const trip = readTrip(world, company, vehicle);
-  const legLeft = Math.max(0, vehicle.routeMiles - vehicle.traveled);
   const dest = vehicle.legs[0]?.toZip ?? vehicle.zip;
 
   return (
@@ -118,14 +117,14 @@ function Owned({ vehicle }: { vehicle: Vehicle }) {
           {vehicle.status === "inbound" ? "Seller is delivering it" : trip ? trip.leg : "Parked"} · {labelPlace(vehicle.zip)}
         </p>
       </div>
-      <p className="text-sm text-ink/70">
-        {Math.round(vehicle.mileage).toLocaleString("en-US")} mi on the odometer
-        {spec.tank > 0 ? ` · fuel ${Math.round(vehicle.fuel)}/${spec.tank} gal` : ""}
+      <div className="grid gap-2 sm:grid-cols-2">
+        <Meter label="Condition" used={vehicle.condition} cap={100} />
+        {spec.tank > 0 ? <Meter label="Fuel" used={vehicle.fuel} cap={spec.tank} /> : null}
+      </div>
+      <p className="text-sm text-ink/60">
+        {Math.round(vehicle.mileage).toLocaleString("en-US")} mi
         {driver ? ` · ${driver.name}` : ""}
-        {spec.payload ? ` · holds ${pounds(spec.payload)}, ${cubes(spec.cube)}` : ""}
-        {isTractor(vehicle.kind) ? " · needs a trailer and a CDL" : ""}
       </p>
-      <Meter label="Condition" used={vehicle.condition} cap={100} />
       {trip ? (
         <div className="space-y-2 border border-ink/10 p-3 text-sm">
           <p>
@@ -133,10 +132,7 @@ function Owned({ vehicle }: { vehicle: Vehicle }) {
             {trip.stopsLeft > 1 ? ` ${trip.stopsLeft} deliveries still aboard.` : ""}
           </p>
           {vehicle.routeMiles > 0 ? <Meter label="This leg" used={vehicle.traveled} cap={vehicle.routeMiles} /> : null}
-          <p className="text-ink/70">
-            {legLeft > 0 ? `${Math.round(legLeft).toLocaleString("en-US")} miles left on this leg. ` : ""}
-            Driven {(driver?.driveToday ?? vehicle.driveToday).toFixed(1)} of 11 hours today.
-          </p>
+          <p className="text-ink/70">Driven {(driver?.driveToday ?? vehicle.driveToday).toFixed(1)} of 11 hours today.</p>
           {trip.pay > 0 ? (
             <p className={trip.afterFuel < 0 ? "text-rust" : "text-pine"}>
               Still owed {money(trip.balance)}. Fuel still to burn {money(trip.burn)}. After that fuel, {money(trip.afterFuel)}.
@@ -225,7 +221,7 @@ function Meter({ label, used, cap }: { label: string; used: number; cap: number 
 
 function LotFilter({ on, label, set }: { on: boolean; label: string; set: () => void }) {
   return (
-    <button type="button" className={`min-h-11 border px-3 text-sm ${on ? "border-ink bg-ink text-paper" : "border-ink/20"}`} onClick={set}>
+    <button type="button" className={`min-h-9 border px-3 text-sm ${on ? "border-ink bg-ink text-paper" : "border-ink/20"}`} onClick={set}>
       {label}
     </button>
   );

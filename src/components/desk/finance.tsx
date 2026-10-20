@@ -1,6 +1,6 @@
 import { labelPlace } from "@/game/geo";
 import { KIND_INFO, localDay, money, shipmentWhen, type LogLine, type Rival } from "@/game/sim";
-import { Panel, useWorld } from "@/components/desk/bits";
+import { Panel, Split, useWorld } from "@/components/desk/bits";
 import { nextPayday, readTrip, resale, type TripRead } from "@/components/desk/trip";
 
 export function Finance() {
@@ -29,7 +29,6 @@ export function Finance() {
   });
   const monthBooks = books(thisMonth);
   const allBooks = books(records);
-  const partials = (company.deliveries ?? []).filter((row) => row.partial).length;
   const moneyLog = world.log.filter((line) => line.text.includes("$"));
   const days: { key: string; label: string; lines: LogLine[] }[] = [];
   for (const line of moneyLog) {
@@ -50,21 +49,19 @@ export function Finance() {
           <Cell label="Equipment if sold" value={money(iron)} />
           <Cell label="Other buildings" value={money(yardValue)} />
         </dl>
-        <p className="mt-3 text-sm text-ink/70">
-          Still to collect is the unpaid balance on freight you already booked, including what is sitting in a warehouse. Deposits are already in cash. Fuel is what the trucks still out will burn at ${world.diesel.toFixed(2)} a gallon. The first building is not for sale.
-        </p>
+        {receivable > 0 || fuel > 0 ? (
+          <div className="mt-4">
+            <Split leftLabel={`To collect ${money(receivable)}`} rightLabel={`Fuel out ${money(fuel)}`} left={receivable} right={fuel} />
+          </div>
+        ) : null}
       </Panel>
 
       <Panel title="Collected by day">
         <DayBars records={records} homeZip={company.homeZip} simHours={world.simHours} />
-        <p className="mt-3 text-sm text-ink/60">Each bar is what customers paid on deliveries that day, after late cuts and damage. Fuel and wages are not in the bars.</p>
       </Panel>
 
       <Panel title="Delivered-load pay">
         <Share you={allBooks.collected} rivals={world.rivals} />
-        <p className="mt-3 text-sm text-ink/60">
-          This is pay collected when a load was delivered. It is not cash left after fuel and wages, and it is not a share of the loads still on the board. Your number is the life of the company. Theirs is what their customers have paid them since they started hauling in this save.
-        </p>
       </Panel>
 
       <Panel title="Delivered freight">
@@ -72,10 +69,6 @@ export function Finance() {
           <Books title="This month" row={monthBooks} />
           <Books title="On the record" row={allBooks} />
         </div>
-        <p className="mt-3 text-sm text-ink/60">
-          Collected is the deposit plus the balance the customer paid, minus damage claims. Late cuts are already out of the balance. Fuel and wages are not in this table. They leave the bank on their own lines below.
-          {partials > 0 ? ` ${partials} older stop${partials === 1 ? "" : "s"} finished before the payout was kept, so ${partials === 1 ? "it is" : "they are"} not in these totals.` : ""}
-        </p>
       </Panel>
 
       <Panel title="Open freight">
@@ -102,7 +95,7 @@ export function Finance() {
             })}
           </ul>
         )}
-        {stored.length > 0 ? <p className="mt-3 text-sm text-ink/60">{stored.length} of those are on a warehouse floor. The delivery day does not move while they sit. An appointment does not move either.</p> : null}
+        {stored.length > 0 ? <p className="mt-3 text-sm text-ink/60">{stored.length} on a warehouse floor.</p> : null}
       </Panel>
 
       <Panel title="Cash journal">
@@ -124,7 +117,6 @@ export function Finance() {
             ))}
           </div>
         )}
-        <p className="mt-3 text-sm text-ink/60">The journal keeps the latest movements, not every dollar since the company opened.</p>
       </Panel>
 
       {company.vehicles.length > 0 ? (

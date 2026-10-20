@@ -10,7 +10,7 @@ export const Route = createFileRoute("/_desk/road")({
 function RoadPage() {
   return (
     <Frame>
-      <PageTitle kicker="In transit" title="Road" note="Miles left, whether the dock is open, and whether fuel eats the pay." />
+      <PageTitle kicker="In transit" title="Road" />
       <Road />
     </Frame>
   );

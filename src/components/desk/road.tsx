@@ -1,6 +1,6 @@
 import { labelPlace } from "@/game/geo";
 import { dockWait, dueDayLabel, KIND_INFO, localDay, money, type Leg } from "@/game/sim";
-import { Panel, useWorld } from "@/components/desk/bits";
+import { Panel, Split, Track, useWorld } from "@/components/desk/bits";
 import { readTrip, type TripRead } from "@/components/desk/trip";
 
 export function Road() {
@@ -44,22 +44,28 @@ function TripCard({ trip, diesel, simHours, company }: { trip: TripRead; diesel:
   const resting = trip.vehicle.restUntil != null && simHours < trip.vehicle.restUntil;
   const short = trip.pay > 0 && trip.afterFuel < 0;
   return (
-    <Panel title={spec.label} extra={<span className="text-sm text-ink/60">{trip.leg}</span>}>
-      <p className="text-sm text-ink/70">
-        Toward {trip.heading}. {Math.max(1, Math.round(trip.milesLeft)).toLocaleString("en-US")} miles left.
-        {trip.stopsLeft > 1 ? ` ${trip.stopsLeft} deliveries still on the truck.` : ""}
-        {trip.driverName ? ` ${trip.driverName} is driving.` : " No driver on it."}
-      </p>
+    <Panel title={spec.label} extra={<span className="text-sm text-ink/60">{trip.driverName ?? "No driver"} · {trip.leg}</span>}>
+      {trip.vehicle.routeMiles > 0 ? (
+        <Track
+          label="This leg"
+          value={trip.vehicle.traveled}
+          max={trip.vehicle.routeMiles}
+          display={milesOnLeg(trip.vehicle.routeMiles, trip.vehicle.traveled)}
+          tone={atDock ? "pine" : "ink"}
+        />
+      ) : null}
       <p className="mt-2 text-sm text-ink/70">
+        Toward {trip.heading}.
+        {trip.stopsLeft > 1 ? ` ${trip.stopsLeft} deliveries still aboard.` : ""}
         {closed && resting && atDock
-          ? `Waiting at the stop. It is ${there.clock} there. Open 8am to ${closeLabel} local.`
+          ? ` Waiting. ${there.clock} there. Open 8am–${closeLabel}.`
           : closed
-            ? `Still rolling. It is ${there.clock} at the stop, which is closed. Open 8am to ${closeLabel} local. The truck waits only if it gets there outside those hours.`
+            ? ` Stop is closed at ${there.clock}. Open 8am–${closeLabel}.`
             : resting
-              ? `Resting until ${localDay(trip.vehicle.restUntil ?? simHours, dest).clock} local.`
+              ? ` Resting until ${localDay(trip.vehicle.restUntil ?? simHours, dest).clock}.`
               : trip.vehicle.status === "inbound"
-                ? "The seller is driving it. You are not paying fuel."
-                : `Driven ${(trip.vehicle.driveToday).toFixed(1)} hours today.`}
+                ? " Seller is driving it."
+                : ` ${(trip.vehicle.driveToday).toFixed(1)}h driven today.`}
       </p>
       <ol className="mt-3 divide-y divide-ink/10 border border-ink/10">
         {(trip.vehicle.done ?? []).map((leg, index) => (
@@ -76,27 +82,19 @@ function TripCard({ trip, diesel, simHours, company }: { trip: TripRead; diesel:
         ))}
       </ol>
       {trip.pay > 0 ? (
-        <dl className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-          <Cell label={trip.stopsLeft > 1 ? "Still on the truck" : "Customer pays"} value={money(trip.pay)} />
-          <Cell label="Already in the bank" value={money(trip.deposit)} />
-          <Cell label="Still owed" value={money(trip.balance)} />
-          <Cell label="Fuel still to burn" value={money(trip.burn)} alert={short} />
-        </dl>
+        <div className="mt-3 space-y-3">
+          <Split leftLabel={`Owed ${money(trip.balance)}`} rightLabel={`Fuel ${money(trip.burn)}`} left={Math.max(0, trip.balance)} right={Math.max(0, trip.burn)} />
+          <p className={`text-sm ${short ? "text-rust" : "text-pine"}`}>
+            {short ? `${money(Math.abs(trip.afterFuel))} short after fuel` : `${money(trip.afterFuel)} left after fuel`}
+            {trip.cashForFuel + 1 < trip.burn ? ` · ${money(trip.burn - trip.cashForFuel)} already in the tank` : ""}
+            {` · $${diesel.toFixed(2)}/gal`}
+          </p>
+        </div>
       ) : (
         <p className="mt-3 text-sm">
-          {trip.vehicle.status === "inbound"
-            ? "No customer on this move."
-            : `No one is paying for this move. Fuel still to burn is about ${money(trip.burn)}.`}
+          {trip.vehicle.status === "inbound" ? "No customer on this move." : `Empty move. Fuel about ${money(trip.burn)}.`}
         </p>
       )}
-      {trip.pay > 0 ? (
-        <p className={`mt-3 text-sm ${short ? "text-rust" : "text-pine"}`}>
-          {short
-            ? `About ${money(Math.abs(trip.afterFuel))} more fuel than the balance still owed, at $${diesel.toFixed(2)} a gallon.`
-            : `About ${money(trip.afterFuel)} left after that fuel, at $${diesel.toFixed(2)} a gallon.`}
-          {trip.cashForFuel + 1 < trip.burn ? ` About ${money(trip.burn - trip.cashForFuel)} of the fuel is already in the tank, so less cash has to leave the bank.` : ""}
-        </p>
-      ) : null}
       {trip.dues.length > 0 ? (
         <ul className="mt-2 space-y-1 text-sm text-ink/60">
           {trip.dues.map((due) => (
@@ -106,8 +104,7 @@ function TripCard({ trip, diesel, simHours, company }: { trip: TripRead; diesel:
           ))}
         </ul>
       ) : null}
-      {trip.lateFee ? <p className="mt-1 text-sm text-ink/60">Marked load. If it is late, 20% of the original pay comes off the unpaid balance each day.</p> : null}
-      <p className="mt-2 text-sm text-ink/45">Diesel moves. This uses today's price, not a locked quote.</p>
+      {trip.lateFee ? <p className="mt-1 text-sm text-ink/60">Late fee. 20% of the original pay comes off each day.</p> : null}
     </Panel>
   );
 }
@@ -143,14 +140,5 @@ function LegRow({ mark, text, detail, live = false }: { mark: string; text: stri
       </span>
       {detail ? <span className="shrink-0 tabular-nums text-ink/60">{detail}</span> : null}
     </li>
-  );
-}
-
-function Cell({ label, value, alert = false }: { label: string; value: string; alert?: boolean }) {
-  return (
-    <div>
-      <dt className="text-xs uppercase tracking-widest text-ink/45">{label}</dt>
-      <dd className={`mt-1 text-lg font-semibold tabular-nums ${alert ? "text-rust" : ""}`}>{value}</dd>
-    </div>
   );
 }

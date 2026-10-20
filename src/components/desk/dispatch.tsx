@@ -16,7 +16,7 @@ import {
 import { useDesk } from "@/game/store";
 import { Button } from "@/components/ui/button";
 import { Field, Select } from "@/components/ui/input";
-import { cubes, dockLine, Notice, Panel, pounds, stamp, useWorld } from "@/components/desk/bits";
+import { cubes, dockLine, Notice, Panel, pounds, Split, stamp, useWorld } from "@/components/desk/bits";
 import { DeliveryMap } from "@/components/desk/map-board";
 
 export function Dispatch() {
@@ -283,18 +283,11 @@ export function Dispatch() {
       <Panel title="The loop" kicker="Plan">
         {preview?.ok ? (
           <>
-            <p className="text-sm text-ink/70">
-              {preview.stops.map((stop) => labelPlace(stop.zip).split(",")[0]).join(" → ")} → back to {labelPlace(yard.zip).split(",")[0]}. {Math.round(preview.miles).toLocaleString("en-US")} miles. Home about {stamp(preview.backAt, yard.zip)}.
+            <Split leftLabel={`Owed ${money(preview.balance)}`} rightLabel={`Fuel ${money(preview.fuelCost)}`} left={Math.max(0, preview.balance)} right={Math.max(0, preview.fuelCost)} />
+            <p className="mt-2 text-sm text-ink/70">
+              {preview.stops.map((stop) => labelPlace(stop.zip).split(",")[0]).join(" → ")} → {labelPlace(yard.zip).split(",")[0]}. {Math.round(preview.miles).toLocaleString("en-US")} mi. Home {stamp(preview.backAt, yard.zip)}.
             </p>
-            <dl className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-              <div>
-                <dt className="text-xs uppercase tracking-widest text-ink/45">Still owed</dt>
-                <dd className="mt-1 font-semibold tabular-nums">{money(preview.balance)}</dd>
-              </div>
-              <div>
-                <dt className="text-xs uppercase tracking-widest text-ink/45">Fuel for the loop</dt>
-                <dd className="mt-1 font-semibold tabular-nums">{money(preview.fuelCost)}</dd>
-              </div>
+            <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
               <div>
                 <dt className="text-xs uppercase tracking-widest text-ink/45">After fuel</dt>
                 <dd className={`mt-1 font-semibold tabular-nums ${preview.afterFuel < 0 ? "text-rust" : "text-pine"}`}>{money(preview.afterFuel)}</dd>
@@ -304,11 +297,7 @@ export function Dispatch() {
                 <dd className="mt-1 font-semibold tabular-nums">{preview.stops.length}</dd>
               </div>
             </dl>
-            {preview.stops.some((stop) => stop.late) ? (
-              <p className="mt-3 text-sm text-rust">In this order, at this departure, at least one stop misses its day. You can still send it.</p>
-            ) : (
-              <p className="mt-3 text-sm text-pine">Every stop makes its day if the truck leaves as planned.</p>
-            )}
+            {preview.stops.some((stop) => stop.late) ? <p className="mt-3 text-sm text-rust">One stop misses its day. You can still send it.</p> : <p className="mt-3 text-sm text-pine">Every stop makes its day.</p>}
           </>
         ) : (
           <p className="text-sm text-ink/70">{preview?.reason || "Load at least one stop to see the miles, the fuel, and which days you will miss."}</p>

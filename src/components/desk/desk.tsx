@@ -321,9 +321,9 @@ export function Log() {
   if (!world.log.length) return null;
   return (
     <section className="border border-ink/10 bg-sheet p-4">
-      <h2 className="mb-3 font-display text-2xl uppercase leading-none tracking-tight">Desk notes</h2>
-      <ol className="space-y-2 text-sm">
-        {world.log.slice(0, 8).map((line) => (
+      <h2 className="mb-2 text-xs uppercase tracking-widest text-ink/45">Recent</h2>
+      <ol className="space-y-1.5 text-sm">
+        {world.log.slice(0, 5).map((line) => (
           <li key={line.id} className={line.tone === "bad" ? "text-rust" : line.tone === "good" ? "text-pine" : "text-ink/80"}>
             <span className="tabular-nums text-ink/40">{whenLabel(line.at)} · </span>
             {line.text}

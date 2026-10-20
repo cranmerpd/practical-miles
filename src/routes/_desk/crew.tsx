@@ -10,7 +10,7 @@ export const Route = createFileRoute("/_desk/crew")({
 function CrewPage() {
   return (
     <Frame>
-      <PageTitle kicker="People" title="Staff" note="Hours left on the clock. A driver at a warehouse can take a 10-hour break. Hiring is separate from the roster." />
+      <PageTitle kicker="People" title="Staff" />
       <Crew />
     </Frame>
   );

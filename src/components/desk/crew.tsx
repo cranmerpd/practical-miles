@@ -3,7 +3,7 @@ import { labelPlace } from "@/game/geo";
 import { gameDate, isCommitted, KIND_INFO, money, type Company, type Driver, type Vehicle } from "@/game/sim";
 import { useDesk } from "@/game/store";
 import { Button } from "@/components/ui/button";
-import { hoursLeft, Notice, Panel, useWorld } from "@/components/desk/bits";
+import { hoursLeft, Notice, Panel, Track, useWorld } from "@/components/desk/bits";
 import { nextPayday, onTheRoad } from "@/components/desk/trip";
 
 function prorate(wage: number, simHours: number): number {
@@ -42,11 +42,8 @@ export function Crew() {
           <Stat label="On a break" value={String(resting)} />
         </dl>
         <p className="mt-3 text-sm text-ink/70">
-          {company.drivers.length === 0
-            ? "Nobody is hired. Wages do not start until you hire."
-            : `${money(wages)} leaves the bank on ${nextPayday(world.simHours)}. Hours stay with the driver. A 10-hour break at the warehouse clears the day, and they cannot be assigned until it ends.`}
+          {company.drivers.length === 0 ? "Nobody is hired." : `${money(wages)} on ${nextPayday(world.simHours)}.`}
         </p>
-        <p className="mt-2 text-sm text-ink/60">They stay with the truck until it parks at a warehouse you own. Skill makes trips faster and damage less likely. It does not change fuel.</p>
         <div className="mt-3">
           <Button variant={hiring ? "quiet" : "primary"} onClick={() => setHiring((value) => !value)}>
             {hiring ? "Hide hiring" : "Hire drivers"}
@@ -74,7 +71,7 @@ export function Crew() {
                 ) : (
                   <ul className="space-y-3">
                     {applicants.map((driver) => (
-                      <Applicant key={driver.id} driver={driver} simHours={world.simHours} wages={wages} />
+                      <Applicant key={driver.id} driver={driver} simHours={world.simHours} />
                     ))}
                   </ul>
                 )}
@@ -95,15 +92,15 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function availability(driver: Driver, simHours: number): string {
+function availability(driver: Driver, simHours: number): { text: string; driven: number } {
   const driven = driver.driveToday ?? 0;
   const left = Math.max(0, 11 - driven);
   const resting = driver.restUntil != null && simHours < driver.restUntil ? driver.restUntil - simHours : 0;
-  if (resting > 0.05 && driven < 0.05) return `On a 10-hour break. About ${hoursLeft(resting)} left. Cannot be assigned until it ends. Then 11 driving hours are open.`;
-  if (resting > 0.05) return `On a break for about ${hoursLeft(resting)}. ${left.toFixed(1)} driving hours left after it.`;
-  if (!driver.breakTaken && driven >= 8) return `Needs the 30-minute break now. ${left.toFixed(1)} driving hours left after it.`;
-  if (!driver.breakTaken) return `${left.toFixed(1)} driving hours left before the 10-hour break. Driven ${driven.toFixed(1)}. The 30-minute break is still owed after 8 hours.`;
-  return `${left.toFixed(1)} driving hours left before the 10-hour break. Driven ${driven.toFixed(1)}. The 30-minute break is done.`;
+  if (resting > 0.05 && driven < 0.05) return { text: `Break · ${hoursLeft(resting)} left`, driven: 0 };
+  if (resting > 0.05) return { text: `Break · ${hoursLeft(resting)} left · ${left.toFixed(1)}h after`, driven };
+  if (!driver.breakTaken && driven >= 8) return { text: `30-minute break due · ${left.toFixed(1)}h after`, driven };
+  if (!driver.breakTaken) return { text: `${left.toFixed(1)}h left · 30-minute break still owed`, driven };
+  return { text: `${left.toFixed(1)}h left · 30-minute break done`, driven };
 }
 
 function Roster({ driver, simHours }: { driver: Driver; simHours: number }) {
@@ -115,32 +112,28 @@ function Roster({ driver, simHours }: { driver: Driver; simHours: number }) {
   const truck = company.vehicles.find((vehicle) => vehicle.id === driver.vehicleId);
   const yard = company.warehouses.find((item) => item.id === driver.warehouseId);
   const ready = trucksTheyCanTake(company, driver);
+  const clock = availability(driver, simHours);
   return (
     <li className="space-y-2 border-b border-ink/10 pb-3 last:border-0 last:pb-0">
-      <p className="font-medium">
-        {driver.name}
-        {driver.cdl ? " · CDL" : " · no CDL"}
-      </p>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <p className="font-medium">
+          {driver.name}
+          {driver.cdl ? " · CDL" : ""}
+        </p>
+        <p className="text-sm tabular-nums text-ink/60">{money(driver.wage)}/mo · skill {driver.skill}</p>
+      </div>
+      <Track label="Driving today" value={clock.driven} max={11} display={`${clock.driven.toFixed(1)} / 11 h`} tone={clock.driven >= 8 ? "rust" : "ink"} />
       <p className="text-sm text-ink/70">
-        Skill {driver.skill} · {money(driver.wage)} a month
-        {truck ? ` · with the ${KIND_INFO[truck.kind].label}` : yard ? ` · at ${labelPlace(yard.zip)}` : " · between yards"}
+        {clock.text}
+        {truck ? ` · ${KIND_INFO[truck.kind].label}` : yard ? ` · ${labelPlace(yard.zip)}` : ""}
+        {ready.length && !driver.vehicleId ? ` · ${ready.map((vehicle) => KIND_INFO[vehicle.kind].label).join(", ")}` : ""}
       </p>
-      <p className="text-sm text-ink/70">{availability(driver, simHours)}</p>
       {!driver.vehicleId && driver.warehouseId && !(driver.restUntil != null && simHours < driver.restUntil) ? (
         <Button variant="quiet" onClick={() => setNote(sendBreak(driver.id))}>
           10-hour break
         </Button>
       ) : null}
-      {!driver.vehicleId ? (
-        <p className="text-sm text-ink/70">
-          {ready.length
-            ? `Can take ${ready.map((vehicle) => `the ${KIND_INFO[vehicle.kind].label}`).join(", ")} parked here.`
-            : "No free truck here that they can drive. A trailer does not count, and a tractor needs a CDL."}
-        </p>
-      ) : null}
-      {driver.vehicleId || (truck && onTheRoad(truck)) ? (
-        <p className="text-sm text-ink/60">You can let them go once the truck is parked at your warehouse and they are off it.</p>
-      ) : (
+      {driver.vehicleId || (truck && onTheRoad(truck)) ? null : (
         <Button variant="quiet" onClick={() => setNote(fireDriver(driver.id))}>
           Let go · rest of month {money(prorate(driver.wage, simHours))}
         </Button>
@@ -150,7 +143,7 @@ function Roster({ driver, simHours }: { driver: Driver; simHours: number }) {
   );
 }
 
-function Applicant({ driver, simHours, wages }: { driver: Driver; simHours: number; wages: number }) {
+function Applicant({ driver, simHours }: { driver: Driver; simHours: number }) {
   const hireDriver = useDesk((s) => s.hireDriver);
   const [note, setNote] = useState<string | null>(null);
   const hireNow = prorate(driver.wage, simHours);
@@ -161,8 +154,10 @@ function Applicant({ driver, simHours, wages }: { driver: Driver; simHours: numb
         {driver.cdl ? " · CDL" : " · no CDL"}
       </p>
       <p className="text-sm text-ink/70">
-        Skill {driver.skill}. {driver.cdl ? "Can drive a tractor, a box, or a van." : "Can drive a van or a box. Cannot drive a tractor."} Wage {money(driver.wage)} a month. Hiring costs {money(hireNow)} for the rest of this month.
-        {wages > 0 ? ` Payroll is already ${money(wages)} a month.` : ""}
+        Skill {driver.skill}
+        {driver.cdl ? " · CDL" : " · no CDL"}
+        {" · "}
+        {money(driver.wage)}/mo · hire {money(hireNow)}
       </p>
       <Button onClick={() => setNote(hireDriver(driver.id))}>Hire</Button>
       <Notice text={note} />

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { labelPlace } from "@/game/geo";
 import { KIND_INFO, localDay, money, type DeliveryRecord } from "@/game/sim";
-import { cubes, Panel, pounds, useWorld } from "@/components/desk/bits";
+import { cubes, Panel, pounds, Track, useWorld } from "@/components/desk/bits";
 
 export function Report() {
   const { world, company } = useWorld();
@@ -46,9 +46,9 @@ export function Report() {
           <Cell label="Late" value={String(late)} alert={late > 0} />
           <Cell label="Net to the bank" value={money(net)} alert={net < 0} />
         </dl>
-        <p className="mt-3 text-sm text-ink/60">
-          Days follow the clock at your home warehouse. The time on each card is local at the dock. Empty miles back to the yard are not on these cards.
-        </p>
+        <div className="mt-4">
+          <Track label="On time" value={known.length - late} max={Math.max(1, known.length)} display={`${known.length - late} of ${known.length}`} tone={late > 0 ? "rust" : "pine"} />
+        </div>
       </Panel>
       {visible.map((day) => {
         const dayNet = day.rows.reduce((sum, row) => sum + (row.payout ?? 0) - row.damage, 0);

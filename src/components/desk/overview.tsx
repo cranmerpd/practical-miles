@@ -25,7 +25,7 @@ export function Overview() {
 
   return (
     <Frame>
-      <PageTitle kicker="Operations" title="Map" note="The company at a glance. The map is where the trucks are. The notes are what just happened." />
+      <PageTitle kicker="Operations" title="Map" />
       <MapBoard route={null} />
       <dl className="grid grid-cols-2 border border-ink/10 sm:grid-cols-4">
         <Count label="Cash" value={money(company.cash)} hint={company.cash < 0 ? "In the red" : "In the bank"} />
@@ -43,15 +43,23 @@ export function Overview() {
           <p className="px-4 py-3 text-sm text-ink/60">Nothing is on the road.</p>
         ) : (
           <ul>
-            {movingTrips.map((trip) => (
-              <li key={trip.vehicle.id} className="flex flex-wrap items-baseline justify-between gap-2 border-t border-ink/10 px-4 py-3 text-sm first:border-0">
-                <span>
-                  {trip.driverName ?? "No driver"}
-                  <span className="text-ink/50"> · {trip.leg} toward {trip.heading}</span>
-                </span>
-                <span className="tabular-nums text-ink/70">{Math.max(1, Math.round(trip.milesLeft)).toLocaleString("en-US")} mi</span>
-              </li>
-            ))}
+            {movingTrips.map((trip) => {
+              const done = trip.vehicle.routeMiles > 0 ? Math.min(100, (trip.vehicle.traveled / trip.vehicle.routeMiles) * 100) : 0;
+              return (
+                <li key={trip.vehicle.id} className="border-t border-ink/10 px-4 py-3 first:border-0">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
+                    <span>
+                      {trip.driverName ?? "No driver"}
+                      <span className="text-ink/50"> · {trip.leg} toward {trip.heading}</span>
+                    </span>
+                    <span className="tabular-nums text-ink/70">{Math.max(1, Math.round(trip.milesLeft)).toLocaleString("en-US")} mi</span>
+                  </div>
+                  <div className="mt-2 h-1.5 bg-ink/10">
+                    <div className="h-1.5 bg-pine" style={{ width: `${done}%` }} />
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
@@ -99,7 +107,7 @@ function Count({ label, value, hint }: { label: string; value: string; hint: str
   return (
     <div className="border-ink/10 p-4 sm:border-l sm:first:border-l-0">
       <dt className="text-xs uppercase tracking-widest text-ink/45">{label}</dt>
-      <dd className="font-display text-5xl leading-none tabular-nums">{value}</dd>
+      <dd className="font-display text-3xl leading-none tabular-nums">{value}</dd>
       <p className="mt-2 text-sm text-ink/55">{hint}</p>
     </div>
   );

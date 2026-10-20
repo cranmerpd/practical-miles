@@ -25,13 +25,45 @@ export function Panel({ title, kicker, children, extra }: { title: string; kicke
   );
 }
 
-export function PageTitle({ kicker, title, note }: { kicker: string; title: string; note?: string }) {
+export function PageTitle({ kicker, title }: { kicker: string; title: string; note?: string }) {
   return (
     <header>
       <p className="text-[10px] font-medium uppercase tracking-[0.28em] text-pine">{kicker}</p>
-      <h2 className="mt-1 font-display text-4xl uppercase leading-none tracking-tight sm:text-5xl">{title}</h2>
-      {note ? <p className="mt-2 max-w-2xl text-sm text-ink/60">{note}</p> : null}
+      <h2 className="mt-1 font-display text-3xl uppercase leading-none tracking-tight">{title}</h2>
     </header>
+  );
+}
+
+export function Track({ label, value, max, display, tone = "ink" }: { label: string; value: number; max: number; display?: string; tone?: "ink" | "pine" | "rust" }) {
+  const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
+  const fill = tone === "pine" ? "bg-pine" : tone === "rust" ? "bg-rust" : "bg-ink";
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-3 text-xs uppercase tracking-widest text-ink/45">
+        <span>{label}</span>
+        {display ? <span className="tabular-nums normal-case tracking-normal text-ink">{display}</span> : null}
+      </div>
+      <div className="mt-1 h-1.5 bg-ink/10">
+        <div className={`h-1.5 ${fill}`} style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
+export function Split({ leftLabel, rightLabel, left, right }: { leftLabel: string; rightLabel: string; left: number; right: number }) {
+  const total = Math.max(0.01, left + right);
+  const share = Math.max(0, Math.min(100, (left / total) * 100));
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-3 text-xs uppercase tracking-widest text-ink/45">
+        <span>{leftLabel}</span>
+        <span>{rightLabel}</span>
+      </div>
+      <div className="mt-1 flex h-2 overflow-hidden bg-ink/10">
+        <div className="h-2 bg-pine" style={{ width: `${share}%` }} />
+        <div className="h-2 bg-rust" style={{ width: `${100 - share}%` }} />
+      </div>
+    </div>
   );
 }
 export function Notice({ text }: { text: string | null }) {

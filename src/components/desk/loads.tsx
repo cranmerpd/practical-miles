@@ -240,7 +240,7 @@ function Filter({ on, set, label }: { on: boolean; set: (value: boolean) => void
     <button
       type="button"
       aria-pressed={on}
-      className={`min-h-11 rounded-md border px-3 text-sm font-medium uppercase tracking-wide ${on ? "border-ink bg-ink text-paper" : "border-ink/20 bg-transparent text-ink"}`}
+      className={`min-h-9 rounded-md border px-3 text-sm ${on ? "border-ink bg-ink text-paper" : "border-ink/20 bg-transparent text-ink"}`}
       onClick={() => set(!on)}
     >
       {label}
@@ -286,14 +286,12 @@ function Books() {
               </p>
               <p className="text-sm">
                 {shipment.status === "stored" && yard
-                  ? `Sitting in ${labelPlace(yard.zip)}. Load it with other freight on the warehouse desk. ${shipment.lateFee ? "The appointment does not move." : "The delivery day does not move while it sits."}`
+                  ? `In ${labelPlace(yard.zip)}`
                   : shipment.status === "booked"
-                    ? seconds > 120
-                      ? "Booked. The truck is waiting to leave."
-                      : seconds > 0
-                        ? `Booked. The truck starts in ${Math.ceil(seconds)}s. You can still give the deposit back.`
-                        : "Booked and about to roll."
-                    : `On the road${milesLeft != null ? `, about ${Math.round(milesLeft).toLocaleString("en-US")} miles left on this leg` : ""}.`}
+                    ? seconds > 0
+                      ? `Leaves in ${Math.ceil(seconds)}s`
+                      : "About to roll"
+                    : `On the road${milesLeft != null ? ` · ${Math.round(milesLeft).toLocaleString("en-US")} mi left` : ""}`}
               </p>
               {shipment.status !== "stored" ? (
                 <div className="flex flex-wrap gap-2">

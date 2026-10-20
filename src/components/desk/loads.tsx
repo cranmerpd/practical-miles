@@ -160,39 +160,48 @@ export function Loads({ onRoute, route }: { onRoute: (points: MapPoint[] | null)
         ) : rows.length === 0 ? (
           <p className="text-sm text-ink/70">Nothing matches these filters.</p>
         ) : (
-          <ul className={`grid items-start gap-3 sm:grid-cols-2 ${held ? "xl:grid-cols-2" : "xl:grid-cols-3"}`}>
+          <ul className="border border-ink/15">
+            <li className="hidden grid-cols-[minmax(0,1.6fr)_5.5rem_4.2rem_4.2rem_5.5rem_8.5rem_5.5rem] gap-2 border-b border-ink/10 px-3 py-2 text-[10px] uppercase tracking-widest text-ink/40 md:grid">
+              <span>Lane</span>
+              <span>Pay</span>
+              <span>Miles</span>
+              <span>$/mi</span>
+              <span>Weight</span>
+              <span>Due</span>
+              <span>Fit</span>
+            </li>
             {rows.map((job) => {
               const fit = canHaul(company, job, world.simHours);
               const heldRow = job.id === world.heldJobId;
+              const rate = (job.pay / Math.max(1, job.miles)).toFixed(2);
+              const due = offerWhen(job.lateFee, job.postedAt + job.dueInHours, world.simHours, job.toZip, job.miles);
               return (
-                <li key={job.id}>
+                <li key={job.id} className="border-b border-ink/10 last:border-0">
                   <button
                     type="button"
-                    className={`h-full w-full border p-3 text-left ${heldRow ? "border-pine bg-ink/10" : "border-ink/15"}`}
+                    className={`w-full px-3 py-2 text-left md:grid md:grid-cols-[minmax(0,1.6fr)_5.5rem_4.2rem_4.2rem_5.5rem_8.5rem_5.5rem] md:items-center md:gap-2 ${heldRow ? "bg-ink/10" : ""}`}
                     onClick={() => holdJob(heldRow ? null : job.id)}
                   >
-                    <span className="flex items-baseline justify-between gap-3">
+                    <span className="block min-w-0">
                       <span className="font-medium">
                         {labelPlace(job.fromZip)}
-                        <span className="text-ink/50"> to </span>
+                        <span className="text-ink/40"> → </span>
                         {labelPlace(job.toZip)}
                       </span>
-                      <span className="shrink-0 tabular-nums font-semibold">{money(job.pay)}</span>
+                      <span className="mt-0.5 block text-xs text-ink/50">
+                        {windowWords(job.pickupKind)} → {windowWords(job.dropKind)}
+                        {job.miles <= 180 && job.weight <= 3500 && job.cube <= 400 ? " · van" : ""}
+                        {job.fragile ? " · fragile" : ""}
+                        {job.lateFee ? " · late fee" : ""}
+                      </span>
                     </span>
-                    <span className="mt-1 flex flex-wrap gap-x-3 text-sm tabular-nums text-ink/70">
-                      <span>{job.miles.toLocaleString("en-US")} mi</span>
-                      <span>${(job.pay / Math.max(1, job.miles)).toFixed(2)}/mi</span>
+                    <span className="mt-1 flex flex-wrap gap-x-3 text-sm tabular-nums text-ink/70 md:contents">
+                      <span className="font-semibold text-ink">{money(job.pay)}</span>
+                      <span>{job.miles.toLocaleString("en-US")}</span>
+                      <span>${rate}</span>
                       <span>{pounds(job.weight)}</span>
-                      <span>{cubes(job.cube)}</span>
-                    </span>
-                    <span className="mt-1 flex flex-wrap gap-x-3 text-sm text-ink/55">
-                      <span>{offerWhen(job.lateFee, job.postedAt + job.dueInHours, world.simHours, job.toZip, job.miles)}</span>
-                      <span>Pickup {windowWords(job.pickupKind)}</span>
-                      <span>Delivery {windowWords(job.dropKind)}</span>
-                      <span className={fit.ok ? "text-pine" : ""}>{fit.label}</span>
-                      {job.miles <= 180 && job.weight <= 3500 && job.cube <= 400 ? <span>Van</span> : null}
-                      {job.fragile ? <span>Fragile</span> : null}
-                      {job.lateFee ? <span>Late fee</span> : null}
+                      <span>{due}</span>
+                      <span className={fit.ok ? "text-pine" : "text-ink/45"}>{fit.label}</span>
                     </span>
                   </button>
                 </li>

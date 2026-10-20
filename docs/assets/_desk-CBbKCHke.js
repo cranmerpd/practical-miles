@@ -1,0 +1,1 @@
+import{t as e}from"./desk-CU_V01z1.js";var t=e;export{t as component};

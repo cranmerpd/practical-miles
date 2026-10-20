@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
-import { labelPlace, planRoad } from "@/game/geo";
-import { dueDayLabel, isCommitted, isTractor, KIND_INFO, money, type Listing, type Vehicle } from "@/game/sim";
+import { havMiles, labelPlace, lookupZip, planRoad } from "@/game/geo";
+import { dueDayLabel, isCommitted, isTractor, KIND_INFO, money, type Kind, type Listing, type Vehicle } from "@/game/sim";
 import { useDesk } from "@/game/store";
 import { Button } from "@/components/ui/button";
 import { Field, Select } from "@/components/ui/input";
@@ -16,6 +16,8 @@ function sellOffer(vehicle: Vehicle): number {
 export function Fleet() {
   const { world, company } = useWorld();
   const [buying, setBuying] = useState(false);
+  const [kind, setKind] = useState<Kind | "all">("all");
+  const [age, setAge] = useState<"all" | "new" | "used">("all");
   if (!company) return null;
   const trucks = company.vehicles.filter((vehicle) => vehicle.kind !== "trailer53");
   const trailers = company.vehicles.length - trucks.length;
@@ -23,6 +25,10 @@ export function Fleet() {
   const fuelGallons = trucks.reduce((sum, vehicle) => sum + Math.max(0, vehicle.fuel), 0);
   const worth = company.vehicles.reduce((sum, vehicle) => sum + resale(vehicle), 0);
   const condition = trucks.length ? trucks.reduce((sum, vehicle) => sum + vehicle.condition, 0) / trucks.length : 0;
+  const shown = world.listings
+    .filter((listing) => (kind === "all" || listing.kind === kind) && (age === "all" || (age === "new" ? Boolean(listing.fresh) : !listing.fresh)))
+    .slice()
+    .sort((a, b) => LOT.indexOf(a.kind) - LOT.indexOf(b.kind) || Number(Boolean(b.fresh)) - Number(Boolean(a.fresh)) || a.price - b.price);
 
   return (
     <div className="space-y-4">
@@ -47,12 +53,23 @@ export function Fleet() {
         </div>
       </Panel>
       {buying || company.vehicles.length === 0 ? (
-        <Panel title="For sale" extra={<span className="text-sm text-ink/60">{world.listings.length} listed, within about 400 miles of a yard</span>}>
-          {world.listings.length === 0 ? (
-            <p className="text-sm text-ink/70">Sellers are still posting trucks.</p>
+        <Panel title="For sale" extra={<span className="text-sm text-ink/60">{shown.length} shown</span>}>
+          <div className="mb-3 flex flex-wrap gap-2">
+            <LotFilter on={kind === "all"} label="All types" set={() => setKind("all")} />
+            {LOT.map((item) => (
+              <LotFilter key={item} on={kind === item} label={KIND_INFO[item].label} set={() => setKind(item)} />
+            ))}
+          </div>
+          <div className="mb-3 flex flex-wrap gap-2">
+            <LotFilter on={age === "all"} label="New and used" set={() => setAge("all")} />
+            <LotFilter on={age === "new"} label="New" set={() => setAge("new")} />
+            <LotFilter on={age === "used"} label="Used" set={() => setAge("used")} />
+          </div>
+          {shown.length === 0 ? (
+            <p className="text-sm text-ink/70">Nothing in this filter. Sellers post again as trucks are bought.</p>
           ) : (
             <ul className="space-y-4">
-              {world.listings.map((listing) => (
+              {shown.map((listing) => (
                 <Lot key={listing.id} listing={listing} />
               ))}
             </ul>
@@ -206,6 +223,16 @@ function Meter({ label, used, cap }: { label: string; used: number; cap: number 
   );
 }
 
+function LotFilter({ on, label, set }: { on: boolean; label: string; set: () => void }) {
+  return (
+    <button type="button" className={`min-h-11 border px-3 text-sm ${on ? "border-ink bg-ink text-paper" : "border-ink/20"}`} onClick={set}>
+      {label}
+    </button>
+  );
+}
+
+const LOT: Kind[] = ["van", "box16", "box26", "daycab", "sleeper", "trailer53"];
+
 function Lot({ listing }: { listing: Listing }) {
   const { company } = useWorld();
   const buyTruck = useDesk((s) => s.buyTruck);
@@ -220,14 +247,25 @@ function Lot({ listing }: { listing: Listing }) {
   if (!company || !yard || fee == null) return null;
   const spec = KIND_INFO[listing.kind];
   const total = listing.price + fee;
+  const here = lookupZip(listing.zip);
+  const near = here
+    ? company.warehouses.reduce<{ miles: number; zip: string } | null>((best, item) => {
+        const place = lookupZip(item.zip);
+        if (!place) return best;
+        const miles = havMiles(here.lat, here.lon, place.lat, place.lon);
+        return !best || miles < best.miles ? { miles, zip: item.zip } : best;
+      }, null)
+    : null;
   return (
     <li className="space-y-2 border-b border-ink/10 pb-4 last:border-0 last:pb-0">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <p className="font-medium">{spec.label}</p>
+        <p className="font-medium">{listing.fresh ? "New " : ""}{spec.label}</p>
         <p className="tabular-nums font-semibold">{money(listing.price)}</p>
       </div>
       <p className="text-sm text-ink/70">
-        Condition {listing.condition} · {listing.mileage.toLocaleString("en-US")} mi · seller in {labelPlace(listing.zip)}
+        {listing.fresh ? "New. No miles. Priced above the used book." : `Used. Condition ${listing.condition}. ${listing.mileage.toLocaleString("en-US")} mi.`}
+        {" "}Seller in {labelPlace(listing.zip)}
+        {near ? `. About ${Math.round(near.miles).toLocaleString("en-US")} miles from ${labelPlace(near.zip)}` : ""}.
       </p>
       <p className="text-sm text-ink/70">
         {spec.payload ? `Holds ${pounds(spec.payload)} and ${cubes(spec.cube)}. ` : "Pulls a trailer. "}

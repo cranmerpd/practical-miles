@@ -145,6 +145,7 @@ export type Listing = {
   condition: number;
   mileage: number;
   zip: string;
+  fresh?: boolean;
 };
 
 export type Applicant = Driver;
@@ -652,7 +653,7 @@ export function warmWorld(world: World): void {
   else if (world.company) refillBoard(world);
   world.jobs = world.jobs.filter((job) => job.mode === "road");
   trimListings(world);
-  if (world.listings.length < 8) refillListings(world);
+  refillListings(world);
   ensureRivals(world);
 }
 
@@ -714,6 +715,8 @@ export function foundCompany(world: World, name: string, zip: string, easy = fal
   refillApplicants(world, yard);
   refillYards(world);
   refillBoard(world);
+  trimListings(world);
+  refillListings(world);
   log(world, `${company.name} opens in ${labelPlace(place.zip)} with ${money(cash)} and a small warehouse. Short van loads are posting around that building.`, "good");
   return null;
 }
@@ -948,22 +951,33 @@ function trimListings(world: World) {
   });
 }
 
+const LOT_KINDS: Kind[] = ["van", "box16", "box26", "daycab", "sleeper", "trailer53"];
+
+function postListing(world: World, kind: Kind, fresh: boolean) {
+  const spec = KIND_INFO[kind];
+  const hub = listingHub(world);
+  const condition = fresh ? 100 : 35 + ri(world, 55);
+  const price = fresh
+    ? Math.round(spec.hi * (1.35 + rngNext(world) * 0.15))
+    : Math.round(spec.lo + (spec.hi - spec.lo) * (0.35 + (condition / 100) * 0.6) * (0.85 + rngNext(world) * 0.3));
+  world.listings.push({
+    id: uid(world, "lot"),
+    kind,
+    price,
+    condition,
+    mileage: fresh ? 0 : kind === "trailer53" ? ri(world, 400000) : 40000 + ri(world, 280000),
+    zip: hub.zip,
+    fresh,
+  });
+}
+
 function refillListings(world: World) {
-  const kinds: Kind[] = ["van", "van", "box16", "box16", "box26", "box26", "trailer53", "daycab", "sleeper"];
-  while (world.listings.length < 14) {
-    const kind = pick(world, kinds);
-    const spec = KIND_INFO[kind];
-    const hub = listingHub(world);
-    const condition = 35 + ri(world, 55);
-    const price = Math.round(spec.lo + (spec.hi - spec.lo) * (0.35 + (condition / 100) * 0.6) * (0.85 + rngNext(world) * 0.3));
-    world.listings.push({
-      id: uid(world, "lot"),
-      kind,
-      price,
-      condition,
-      mileage: kind === "trailer53" ? ri(world, 400000) : 40000 + ri(world, 280000),
-      zip: hub.zip,
-    });
+  for (const kind of LOT_KINDS) {
+    const posted = world.listings.filter((item) => item.kind === kind);
+    const haveNew = posted.filter((item) => item.fresh).length;
+    const haveUsed = posted.length - haveNew;
+    for (let n = haveNew; n < 1; n++) postListing(world, kind, true);
+    for (let n = haveUsed; n < 3; n++) postListing(world, kind, false);
   }
 }
 
@@ -1300,6 +1314,7 @@ function rivalBuy(world: World, rival: Rival) {
   const target = uncovered;
   const reserve = rival.drivers.reduce((sum, driver) => sum + driver.wage, 0);
   const listing = world.listings.find((item) => {
+    if (item.fresh) return false;
     if (item.kind !== "van" && item.kind !== "box16" && item.kind !== "box26") return false;
     if (item.price > rival.cash - reserve) return false;
     if (!target) return true;

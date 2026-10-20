@@ -78,7 +78,7 @@ export function Fleet() {
       ) : null}
       {company.vehicles.length > 0 ? (
         <Panel title="Equipment">
-          <ul className="space-y-4">
+          <ul className="grid items-start gap-3 md:grid-cols-2 xl:grid-cols-3">
             {company.vehicles.map((vehicle) => (
               <Owned key={vehicle.id} vehicle={vehicle} />
             ))}
@@ -110,7 +110,7 @@ function Owned({ vehicle }: { vehicle: Vehicle }) {
   const dest = vehicle.legs[0]?.toZip ?? vehicle.zip;
 
   return (
-    <li className="space-y-2 border-b border-ink/10 pb-4 last:border-0 last:pb-0">
+    <li className="space-y-2 border border-ink/15 p-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <p className="font-medium">{spec.label}</p>
         <p className="text-sm tabular-nums text-ink/70">

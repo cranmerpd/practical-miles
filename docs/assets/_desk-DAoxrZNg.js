@@ -1,0 +1,1 @@
+import{t as e}from"./desk-SH_kbtYs.js";var t=e;export{t as component};

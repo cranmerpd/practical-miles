@@ -62,7 +62,7 @@ function spot(vehicle: Vehicle): MapPoint | null {
   return lookupZip(vehicle.zip) ?? null;
 }
 
-export function MapBoard({ route }: { route: MapPoint[] | null }) {
+export function MapBoard({ route, fit = false }: { route: MapPoint[] | null; fit?: boolean }) {
   const { world, company } = useWorld();
   const preview = route && route.length > 1 ? line(route) : "";
   const [hover, setHover] = useState<string | null>(null);
@@ -73,13 +73,14 @@ export function MapBoard({ route }: { route: MapPoint[] | null }) {
   );
 
   return (
-    <figure className="overflow-hidden rounded-lg border border-ink/10 bg-sheet">
+    <figure className={fit ? "grid h-auto overflow-hidden rounded-lg border border-ink/10 bg-sheet lg:h-full lg:min-h-0 lg:grid-rows-[minmax(0,1fr)_auto]" : "overflow-hidden rounded-lg border border-ink/10 bg-sheet"}>
       <svg
         viewBox="-28 -18 1056 656"
         role="img"
         aria-label="Highway map of the lower 48. Tap a truck, a city, or a warehouse."
-        className="h-auto w-full touch-manipulation"
-        style={{ aspectRatio: `${MAP.width} / ${MAP.height}` }}
+        className={fit ? "h-auto max-h-[46dvh] w-full touch-manipulation lg:h-full lg:max-h-full lg:min-h-0" : "h-auto w-full touch-manipulation"}
+        style={fit ? undefined : { aspectRatio: `${MAP.width} / ${MAP.height}` }}
+        preserveAspectRatio="xMidYMid meet"
         onPointerDown={() => setPin(null)}
       >
         <rect x={-28} y={-18} width={1056} height={656} className="fill-sheet" />

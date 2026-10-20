@@ -33,34 +33,26 @@ export function Crew() {
   const resting = company.drivers.filter((driver) => driver.restUntil != null && world.simHours < driver.restUntil).length;
 
   return (
-    <div className="space-y-4">
-      <Panel title="The roster">
-        <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <dl className="grid min-w-0 flex-1 grid-cols-2 border border-ink/10 sm:grid-cols-4">
           <Stat label="On payroll" value={String(company.drivers.length)} />
           <Stat label="Out" value={String(out)} />
           <Stat label="At a yard" value={String(sitting.length)} />
           <Stat label="On a break" value={String(resting)} />
         </dl>
-        <p className="mt-3 text-sm text-ink/70">
-          {company.drivers.length === 0 ? "Nobody is hired." : `${money(wages)} on ${nextPayday(world.simHours)}.`}
-        </p>
-        <div className="mt-3">
-          <Button variant={hiring ? "quiet" : "primary"} onClick={() => setHiring((value) => !value)}>
-            {hiring ? "Hide hiring" : "Hire drivers"}
-          </Button>
-        </div>
-      </Panel>
-      <Panel title="On the payroll">
-        {company.drivers.length === 0 ? (
-          <p className="text-sm text-ink/70">Nobody is hired yet.</p>
-        ) : (
-          <ul className="space-y-3">
-            {company.drivers.map((driver) => (
-              <Roster key={driver.id} driver={driver} simHours={world.simHours} />
-            ))}
-          </ul>
-        )}
-      </Panel>
+        <Button variant={hiring ? "quiet" : "primary"} onClick={() => setHiring((value) => !value)}>
+          {hiring ? "Hide hiring" : "Hire drivers"}
+        </Button>
+      </div>
+      <p className="text-sm text-ink/70">{company.drivers.length === 0 ? "Nobody is hired." : `${money(wages)} on ${nextPayday(world.simHours)}.`}</p>
+      {company.drivers.length === 0 ? null : (
+        <ul className="grid items-start gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {company.drivers.map((driver) => (
+            <Roster key={driver.id} driver={driver} simHours={world.simHours} />
+          ))}
+        </ul>
+      )}
       {hiring || company.drivers.length === 0
         ? company.warehouses.map((yard) => {
             const applicants = company.applicants.filter((driver) => driver.warehouseId === yard.id);
@@ -69,7 +61,7 @@ export function Crew() {
                 {applicants.length === 0 ? (
                   <p className="text-sm text-ink/70">No one is waiting here right now. More names show up through the day.</p>
                 ) : (
-                  <ul className="space-y-3">
+                  <ul className="grid items-start gap-3 md:grid-cols-2 xl:grid-cols-3">
                     {applicants.map((driver) => (
                       <Applicant key={driver.id} driver={driver} simHours={world.simHours} />
                     ))}
@@ -85,9 +77,9 @@ export function Crew() {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div>
-      <dt className="text-xs uppercase tracking-widest text-ink/45">{label}</dt>
-      <dd className="mt-1 font-display text-3xl leading-none tabular-nums">{value}</dd>
+    <div className="border-ink/10 p-3 odd:border-r sm:border-r sm:last:border-r-0">
+      <dt className="text-[10px] uppercase tracking-widest text-ink/45">{label}</dt>
+      <dd className="font-display text-2xl leading-none tabular-nums">{value}</dd>
     </div>
   );
 }
@@ -114,7 +106,7 @@ function Roster({ driver, simHours }: { driver: Driver; simHours: number }) {
   const ready = trucksTheyCanTake(company, driver);
   const clock = availability(driver, simHours);
   return (
-    <li className="space-y-2 border-b border-ink/10 pb-3 last:border-0 last:pb-0">
+    <li className="space-y-2 border border-ink/15 p-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <p className="font-medium">
           {driver.name}
@@ -148,16 +140,13 @@ function Applicant({ driver, simHours }: { driver: Driver; simHours: number }) {
   const [note, setNote] = useState<string | null>(null);
   const hireNow = prorate(driver.wage, simHours);
   return (
-    <li className="space-y-2 border-b border-ink/10 pb-3 last:border-0 last:pb-0">
+    <li className="space-y-2 border border-ink/15 p-3">
       <p className="font-medium">
         {driver.name}
         {driver.cdl ? " · CDL" : " · no CDL"}
       </p>
       <p className="text-sm text-ink/70">
-        Skill {driver.skill}
-        {driver.cdl ? " · CDL" : " · no CDL"}
-        {" · "}
-        {money(driver.wage)}/mo · hire {money(hireNow)}
+        Skill {driver.skill} · {money(driver.wage)}/mo · hire {money(hireNow)}
       </p>
       <Button onClick={() => setNote(hireDriver(driver.id))}>Hire</Button>
       <Notice text={note} />

@@ -183,10 +183,10 @@ export function Loads({ onRoute }: { onRoute: (points: MapPoint[] | null) => voi
                 <li key={job.id}>
                   <button
                     type="button"
-                    className={`w-full py-4 text-left ${heldRow ? "bg-ink/[0.04]" : ""}`}
+                    className={`w-full py-3 text-left ${heldRow ? "bg-ink/[0.04]" : ""}`}
                     onClick={() => holdJob(heldRow ? null : job.id)}
                   >
-                    <span className="flex flex-wrap items-baseline justify-between gap-2">
+                    <span className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                       <span className="font-medium">
                         {labelPlace(job.fromZip)}
                         <span className="text-ink/50"> to </span>
@@ -194,24 +194,22 @@ export function Loads({ onRoute }: { onRoute: (points: MapPoint[] | null) => voi
                       </span>
                       <span className="tabular-nums font-semibold">{money(job.pay)}</span>
                     </span>
-                    <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
-                      <Fact label="Miles" value={`${job.miles.toLocaleString("en-US")} mi`} />
-                      <Fact label="Rate" value={`$${(job.pay / Math.max(1, job.miles)).toFixed(2)}/mi`} />
-                      <Fact label="Weight" value={pounds(job.weight)} />
-                      <Fact label="Cube" value={cubes(job.cube)} />
-                      <Fact label="Due" value={dueDayLabel(world.simHours, job.postedAt + job.dueInHours, job.toZip).replace(/^Due /, "")} />
-                      <Fact label="Pickup" value={windowWords(job.pickupKind)} />
-                      <Fact label="Delivery" value={windowWords(job.dropKind)} />
-                      <Fact label="Fit" value={fit.label} tone={fit.ok ? "pine" : "muted"} />
-                    </dl>
-                    {(job.miles <= 180 && job.weight <= 3500 && job.cube <= 400) || job.fragile || job.lateFee || heldRow ? (
-                      <span className="mt-3 flex flex-wrap gap-2">
-                        {job.miles <= 180 && job.weight <= 3500 && job.cube <= 400 ? <Tag>Van</Tag> : null}
-                        {job.fragile ? <Tag>Fragile</Tag> : null}
-                        {job.lateFee ? <Tag>Late fee</Tag> : null}
-                        {heldRow ? <Tag>Open</Tag> : null}
-                      </span>
-                    ) : null}
+                    <span className="mt-1 flex flex-wrap gap-x-3 text-sm tabular-nums text-ink/70">
+                      <span>{job.miles.toLocaleString("en-US")} mi</span>
+                      <span>${(job.pay / Math.max(1, job.miles)).toFixed(2)}/mi</span>
+                      <span>{pounds(job.weight)}</span>
+                      <span>{cubes(job.cube)}</span>
+                      <span>{dueDayLabel(world.simHours, job.postedAt + job.dueInHours, job.toZip)}</span>
+                    </span>
+                    <span className="mt-1 flex flex-wrap gap-x-3 text-sm text-ink/55">
+                      <span>Pickup {windowWords(job.pickupKind)}</span>
+                      <span>Delivery {windowWords(job.dropKind)}</span>
+                      <span className={fit.ok ? "text-pine" : ""}>{fit.label}</span>
+                      {job.miles <= 180 && job.weight <= 3500 && job.cube <= 400 ? <span>Van</span> : null}
+                      {job.fragile ? <span>Fragile</span> : null}
+                      {job.lateFee ? <span>Late fee</span> : null}
+                      {heldRow ? <span className="text-rust">Open</span> : null}
+                    </span>
                   </button>
                 </li>
               );
@@ -224,22 +222,9 @@ export function Loads({ onRoute }: { onRoute: (points: MapPoint[] | null) => voi
 }
 
 function windowWords(kind: MarketJob["pickupKind"]): string {
-  if (kind === "commercial") return "Commercial · 8am–5pm";
-  if (kind === "residential") return "House · 8am–8pm";
-  return "8am–8pm";
-}
-
-function Fact({ label, value, tone = "ink" }: { label: string; value: string; tone?: "ink" | "pine" | "muted" }) {
-  return (
-    <div className="min-w-0">
-      <dt className="text-[10px] font-medium uppercase tracking-[0.16em] text-ink/40">{label}</dt>
-      <dd className={`truncate text-sm tabular-nums ${tone === "pine" ? "text-pine" : tone === "muted" ? "text-ink/55" : ""}`}>{value}</dd>
-    </div>
-  );
-}
-
-function Tag({ children }: { children: string }) {
-  return <span className="border border-ink/15 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-ink/70">{children}</span>;
+  if (kind === "commercial") return "commercial 8–5";
+  if (kind === "residential") return "house 8–8";
+  return "8–8";
 }
 
 function Filter({ on, set, label }: { on: boolean; set: (value: boolean) => void; label: string }) {

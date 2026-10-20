@@ -69,6 +69,7 @@ export function readTrip(world: World, company: Company, vehicle: Vehicle): Trip
   let when = world.simHours;
   let driven = driver?.driveToday ?? vehicle.driveToday;
   let broke = Boolean(driver?.breakTaken ?? vehicle.breakTaken);
+  if (vehicle.restUntil != null && vehicle.restUntil > world.simHours) when = vehicle.restUntil;
   let fromZip = vehicle.zip;
   const etas = vehicle.legs.map((item, index) => {
     const miles = index === 0 ? Math.max(0, vehicle.routeMiles - vehicle.traveled) : (planRoad(fromZip, item.toZip)?.miles ?? 0);

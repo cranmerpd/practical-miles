@@ -70,6 +70,7 @@ function OpenScreen() {
   const [name, setName] = useState("");
   const [zip, setZip] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [easy, setEasy] = useState(false);
   const roads = world.jobs.filter((job) => job.mode === "road").length;
 
   return (
@@ -91,16 +92,20 @@ function OpenScreen() {
               setNote("Pick a real ZIP code.");
               return;
             }
-            setNote(found(name, zip));
+            setNote(found(name, zip, easy));
           }}
         >
           <p className="font-display text-3xl uppercase leading-none tracking-tight">Put your name on the door.</p>
-          <p className="text-sm text-ink/60">$25,000. Reputation 35. A small building in whatever city you choose.</p>
+          <p className="text-sm text-ink/60">{easy ? "$100,000." : "$25,000."} Reputation 35. A small building in whatever city you choose.</p>
           <label className="block space-y-1 text-sm font-medium">
             <span className="text-xs uppercase tracking-widest text-ink/55">Company name</span>
             <Input value={name} autoComplete="off" onChange={(event) => setName(event.target.value)} />
           </label>
           <PlaceSearch label="Where is the warehouse?" onPick={setZip} />
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={easy} onChange={(event) => setEasy(event.target.checked)} />
+            Easy. Start with $100,000.
+          </label>
           <Button type="submit" disabled={!name.trim() || !zip}>
             Open the company
           </Button>
@@ -132,6 +137,7 @@ function ClosedScreen() {
   const restart = useDesk((s) => s.restart);
   const [name, setName] = useState("");
   const [zip, setZip] = useState<string | null>(null);
+  const [easy, setEasy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   if (!company) return null;
   return (
@@ -140,14 +146,14 @@ function ClosedScreen() {
         <p className="text-xs font-medium uppercase tracking-widest text-ink/50">Company closed</p>
         <h1 className="font-display text-5xl uppercase leading-none tracking-tight">{company.name}</h1>
         <p className="max-w-prose text-ink/75">
-          Three months in the red shut the doors. The highways did not stop. Open again with a new name and a new ZIP. You get $25,000, reputation 35, and a small warehouse. The old trucks are gone.
+          Three months in the red shut the doors. The highways did not stop. Open again with a new name and a new ZIP. You get {easy ? "$100,000" : "$25,000"}, reputation 35, and a small warehouse. The old trucks are gone.
         </p>
         <form
           className="space-y-3 border border-ink/15 bg-sheet p-4"
           onSubmit={(event) => {
             event.preventDefault();
             if (!zip) return;
-            setNote(restart(name, zip));
+            setNote(restart(name, zip, easy));
           }}
         >
           <label className="block space-y-1 text-sm font-medium">
@@ -155,6 +161,10 @@ function ClosedScreen() {
             <Input value={name} autoComplete="off" onChange={(event) => setName(event.target.value)} />
           </label>
           <PlaceSearch label="New warehouse ZIP or city" onPick={setZip} />
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={easy} onChange={(event) => setEasy(event.target.checked)} />
+            Easy. Start with $100,000.
+          </label>
           <Button type="submit" disabled={!name.trim() || !zip}>
             Open again
           </Button>
@@ -189,7 +199,7 @@ function LiveChrome() {
           </div>
           <div className="flex shrink-0 items-center gap-1">
             <div className="flex" role="group" aria-label="Speed">
-              {([1, 2, 4] as const).map((rate) => (
+              {([1, 2, 4, 8] as const).map((rate) => (
                 <button
                   key={rate}
                   type="button"

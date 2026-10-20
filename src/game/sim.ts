@@ -647,10 +647,11 @@ export function createWorld(seed = 20260302): World {
   return world;
 }
 
-export function foundCompany(world: World, name: string, zip: string): string | null {
+export function foundCompany(world: World, name: string, zip: string, easy = false): string | null {
   const place = lookupZip(zip);
   if (!place) return "That ZIP code is not a stop on this map.";
   if (!name.trim()) return "The company needs a name.";
+  const cash = easy ? 100000 : 25000;
   const yard: Warehouse = {
     id: uid(world, "yard"),
     zip: place.zip,
@@ -661,7 +662,7 @@ export function foundCompany(world: World, name: string, zip: string): string | 
   };
   const company: Company = {
     name: name.trim(),
-    cash: 25000,
+    cash,
     rep: 35,
     homeZip: place.zip,
     negativeSince: null,
@@ -678,7 +679,7 @@ export function foundCompany(world: World, name: string, zip: string): string | 
   refillApplicants(world, yard);
   refillYards(world);
   refillBoard(world);
-  log(world, `${company.name} opens in ${labelPlace(place.zip)} with $25,000 and a small warehouse. Short van loads are posting around that building.`, "good");
+  log(world, `${company.name} opens in ${labelPlace(place.zip)} with ${money(cash)} and a small warehouse. Short van loads are posting around that building.`, "good");
   return null;
 }
 

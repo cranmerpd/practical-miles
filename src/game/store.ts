@@ -24,7 +24,7 @@ import {
 } from "./sim";
 
 const KEY = "practical-miles-v1";
-export type Speed = 1 | 2 | 4;
+export type Speed = 1 | 2 | 4 | 8;
 
 type DeskState = {
   world: World;
@@ -36,7 +36,7 @@ type DeskState = {
   togglePause: () => void;
   setSpeed: (speed: Speed) => void;
   tick: (realSeconds: number) => void;
-  found: (name: string, zip: string) => string | null;
+  found: (name: string, zip: string, easy?: boolean) => string | null;
   holdJob: (id: string | null) => void;
   accept: (jobId: string, vehicleId: string, driverId: string, trailerId?: string, force?: boolean, stage?: boolean, pickupIds?: string[]) => string | null;
   cancel: (shipmentId: string) => string | null;
@@ -53,7 +53,7 @@ type DeskState = {
   divert: (shipmentId: string, warehouseId: string) => string | null;
   rollStored: (shipmentId: string, vehicleId: string, driverId: string, trailerId?: string) => string | null;
   dispatch: (warehouseId: string, vehicleId: string, driverId: string, shipmentIds: string[], trailerId?: string, atDawn?: boolean) => string | null;
-  restart: (name: string, zip: string) => string | null;
+  restart: (name: string, zip: string, easy?: boolean) => string | null;
   abandon: () => void;
   exportSave: () => string;
   importSave: (raw: string) => string | null;
@@ -86,7 +86,7 @@ export const useDesk = create<DeskState>((set, get) => ({
       if (raw) {
         const saved = JSON.parse(raw) as { world: World; paused: boolean; savedAt: number; speed?: number };
         const world = saved.world;
-        const speed: Speed = saved.speed === 2 || saved.speed === 4 ? saved.speed : 1;
+        const speed: Speed = saved.speed === 2 || saved.speed === 4 || saved.speed === 8 ? saved.speed : 1;
         if (!saved.paused && saved.savedAt) {
           const realHours = (Date.now() - saved.savedAt) / 3_600_000;
           advance(world, realHours * SIM_PER_REAL_HOUR);
@@ -113,7 +113,7 @@ export const useDesk = create<DeskState>((set, get) => ({
     persist(get().world, paused);
   },
   setSpeed: (speed) => {
-    if (speed !== 1 && speed !== 2 && speed !== 4) return;
+    if (speed !== 1 && speed !== 2 && speed !== 4 && speed !== 8) return;
     set({ speed, frame: get().frame + 1 });
     persist(get().world, get().paused);
   },
@@ -124,8 +124,8 @@ export const useDesk = create<DeskState>((set, get) => ({
     set({ frame: get().frame + 1 });
     persist(world, false, false);
   },
-  found: (name, zip) => {
-    const error = foundCompany(get().world, name, zip);
+  found: (name, zip, easy) => {
+    const error = foundCompany(get().world, name, zip, easy);
     if (error) return error;
     set({ frame: get().frame + 1, paused: false });
     persist(get().world, false);
@@ -225,10 +225,10 @@ export const useDesk = create<DeskState>((set, get) => ({
     persist(get().world, get().paused);
     return error;
   },
-  restart: (name, zip) => {
+  restart: (name, zip, easy) => {
     const world = get().world;
     world.company = null;
-    const error = foundCompany(world, name, zip);
+    const error = foundCompany(world, name, zip, easy);
     if (error) return error;
     set({ frame: get().frame + 1, paused: false });
     persist(world, false);

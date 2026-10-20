@@ -503,14 +503,32 @@ export function offerWhen(lateFee: boolean, dueAt: number, simHours: number, zip
   return days === 1 ? "1-day run" : `${days}-day run`;
 }
 
+function leadClose(simHours: number, zip: string, days: number, kind?: StopKind): number {
+  const place = lookupZip(zip);
+  const off = place ? zoneOffset(place.state, place.lon, simHours) : -5;
+  const close = kind === "commercial" ? 17 : 20;
+  const dayIndex = Math.floor((simHours + off) / 24) + days;
+  const first = dayIndex * 24 + close - off;
+  const off2 = place ? zoneOffset(place.state, place.lon, first) : off;
+  return dayIndex * 24 + close - off2;
+}
+
 export function shipmentWhen(simHours: number, shipment: Shipment): string {
   if (shipment.lateFee) return dueDayLabel(simHours, shipment.dueAt, shipment.toZip);
-  if (shipment.runStarted === false) {
+  if (shipment.runStarted !== true || shipment.dueAt <= 0) {
     const miles = planRoad(shipment.fromZip, shipment.toZip)?.miles ?? 80;
     const days = runDaysFor(miles);
-    return days === 1 ? "1-day run, starts at pickup" : `${days}-day run, starts at pickup`;
+    return days === 1 ? "1-day run" : `${days}-day run`;
   }
-  return dueDayLabel(simHours, shipment.dueAt, shipment.toZip);
+  const when = localDay(shipment.dueAt, shipment.toZip).short;
+  const place = lookupZip(shipment.toZip);
+  const nowOff = place ? zoneOffset(place.state, place.lon, simHours) : -5;
+  const dueOff = place ? zoneOffset(place.state, place.lon, shipment.dueAt) : -5;
+  const diff = Math.floor((shipment.dueAt + dueOff) / 24) - Math.floor((simHours + nowOff) / 24);
+  if (diff < 0) return diff === -1 ? `1 day late · ${when}` : `${-diff} days late · ${when}`;
+  if (diff === 0) return `Deliver today, ${when}`;
+  if (diff === 1) return `Deliver tomorrow, ${when}`;
+  return `Deliver ${when}`;
 }
 
 export function dueDayLabel(simHours: number, dueAt: number, zip: string): string {
@@ -654,7 +672,17 @@ export function warmWorld(world: World): void {
   world.jobs = world.jobs.filter((job) => job.mode === "road");
   trimListings(world);
   refillListings(world);
+  snapLeadDays(world);
   ensureRivals(world);
+}
+
+function snapLeadDays(world: World) {
+  const company = world.company;
+  if (!company) return;
+  for (const shipment of company.shipments) {
+    if (shipment.lateFee || shipment.status === "done" || shipment.runStarted !== true || shipment.dueAt <= 0) continue;
+    shipment.dueAt = leadClose(shipment.dueAt, shipment.toZip, 0, shipment.dropKind);
+  }
 }
 
 function easeDeadlines(world: World) {
@@ -668,7 +696,7 @@ function easeDeadlines(world: World) {
   const company = world.company;
   if (company) {
     for (const shipment of company.shipments) {
-      if (shipment.status === "done") continue;
+      if (shipment.status === "done" || !shipment.lateFee) continue;
       const miles = planRoad(shipment.fromZip, shipment.toZip)?.miles ?? 80;
       const due = dueAtFor(world.simHours, miles, shipment.toZip);
       if (shipment.dueAt < due) shipment.dueAt = due;
@@ -2068,8 +2096,8 @@ export function acceptJob(
     log(
       world,
       made.length === 1
-        ? `The truck will bring it to ${labelPlace(home.zip)} instead of the customer. A run starts at pickup. An appointment does not move.`
-        : `The truck will pick up ${made.length} loads and bring them to ${labelPlace(home.zip)}. A run starts at pickup. An appointment does not move.`,
+        ? `The truck will bring it to ${labelPlace(home.zip)} instead of the customer. A 2-day run picked up Tuesday is delivered Thursday, before the dock closes.`
+        : `The truck will pick up ${made.length} loads and bring them to ${labelPlace(home.zip)}. A 2-day run picked up Tuesday is delivered Thursday, before the dock closes.`,
       "info",
     );
   }
@@ -2493,7 +2521,7 @@ function finishDelivery(world: World, company: Company, shipment: Shipment, vehi
       : late && shipment.lateFee
         ? `Delivered late in ${where}.${lateCut > 0 ? ` Late fee ${money(lateCut)}.` : ""} ${payout > 0 ? `${money(payout)} reached the bank.` : "Nothing left of the balance."}`
         : late
-          ? `Delivered past the run time in ${where}. Reputation drops. ${payout > 0 ? `${money(payout)} reached the bank.` : "Nothing left of the balance."}`
+          ? `Delivered after ${localDay(shipment.dueAt, shipment.toZip).short} in ${where}. Reputation drops. ${payout > 0 ? `${money(payout)} reached the bank.` : "Nothing left of the balance."}`
           : `Delivered in ${where}. ${money(payout)} reached the bank.`,
     late || early || payout <= 0 ? "bad" : "good",
   );
@@ -2631,7 +2659,7 @@ function openRun(world: World, shipment: Shipment) {
   if (shipment.lateFee || shipment.runStarted !== false) return;
   const miles = planRoad(shipment.fromZip, shipment.toZip)?.miles ?? 80;
   shipment.runStarted = true;
-  shipment.dueAt = world.simHours + runDaysFor(miles) * 24;
+  shipment.dueAt = leadClose(world.simHours, shipment.toZip, runDaysFor(miles), shipment.dropKind);
 }
 
 function arrive(world: World, company: Company, vehicle: Vehicle) {

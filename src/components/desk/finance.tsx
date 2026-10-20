@@ -102,7 +102,7 @@ export function Finance() {
             })}
           </ul>
         )}
-        {stored.length > 0 ? <p className="mt-3 text-sm text-ink/60">{stored.length} of those are on a warehouse floor. A run keeps going while it sits. An appointment does not move.</p> : null}
+        {stored.length > 0 ? <p className="mt-3 text-sm text-ink/60">{stored.length} of those are on a warehouse floor. The delivery day does not move while they sit. An appointment does not move either.</p> : null}
       </Panel>
 
       <Panel title="Cash journal">

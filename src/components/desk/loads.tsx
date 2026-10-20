@@ -286,7 +286,7 @@ function Books() {
               </p>
               <p className="text-sm">
                 {shipment.status === "stored" && yard
-                  ? `Sitting in ${labelPlace(yard.zip)}. Load it with other freight on the warehouse desk. ${shipment.lateFee ? "The appointment is still running." : shipment.runStarted === false ? "The run has not started." : "The run is still going."}`
+                  ? `Sitting in ${labelPlace(yard.zip)}. Load it with other freight on the warehouse desk. ${shipment.lateFee ? "The appointment does not move." : "The delivery day does not move while it sits."}`
                   : shipment.status === "booked"
                     ? seconds > 120
                       ? "Booked. The truck is waiting to leave."
@@ -586,7 +586,7 @@ function Booking({ job, onRoute, onClose }: { job: MarketJob; onRoute: (points: 
                 </p>
               ))}
               <p>
-                {pickupOrder.length} pickup{pickupOrder.length === 1 ? "" : "s"}. Home about {stamp(stage.homeAt, vehicle.zip)}. Fuel about {money(stage.fuelCost)}. Truck {pounds(stage.weight)} of {pounds(stage.payload)}. A run starts at pickup. An appointment does not move.
+                {pickupOrder.length} pickup{pickupOrder.length === 1 ? "" : "s"}. Home about {stamp(stage.homeAt, vehicle.zip)}. Fuel about {money(stage.fuelCost)}. Truck {pounds(stage.weight)} of {pounds(stage.payload)}. A 2-day run picked up Tuesday is delivered Thursday.
               </p>
             </div>
           ) : (

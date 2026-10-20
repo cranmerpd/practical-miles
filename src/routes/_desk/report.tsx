@@ -1,5 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { PageTitle } from "@/components/desk/bits";
 import { Frame } from "@/components/desk/desk";
 import { Report } from "@/components/desk/report";
 
@@ -10,7 +9,6 @@ export const Route = createFileRoute("/_desk/report")({
 function ReportPage() {
   return (
     <Frame>
-      <PageTitle kicker="History" title="Report" />
       <Report />
     </Frame>
   );

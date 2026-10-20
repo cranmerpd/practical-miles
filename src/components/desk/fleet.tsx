@@ -212,8 +212,8 @@ function Meter({ label, used, cap }: { label: string; used: number; cap: number 
         <span>{label}</span>
         <span className="tabular-nums">{Math.round(pct)}%</span>
       </div>
-      <div className="h-1 bg-ink/10">
-        <div className="h-1 bg-ink" style={{ width: `${pct}%` }} />
+      <div className="h-3 bg-ink/10">
+        <div className="h-3 bg-ink" style={{ width: `${pct}%` }} />
       </div>
     </div>
   );

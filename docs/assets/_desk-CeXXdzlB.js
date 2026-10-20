@@ -1,0 +1,1 @@
+import{t as e}from"./desk-C9j53-Pe.js";var t=e;export{t as component};

@@ -12,11 +12,11 @@ export function useWorld() {
 
 export function Panel({ title, kicker, children, extra }: { title: string; kicker?: string; children: ReactNode; extra?: ReactNode }) {
   return (
-    <section className="border border-ink/15 bg-sheet">
+    <section className="border border-ink/15 border-l-4 border-l-pine bg-sheet">
       <div className="flex flex-wrap items-end justify-between gap-3 border-b border-ink/10 px-4 py-3">
         <div>
-          {kicker ? <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-pine">{kicker}</p> : null}
-          <h2 className="font-display text-2xl uppercase leading-none tracking-tight">{title}</h2>
+          {kicker ? <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-ink/40">{kicker}</p> : null}
+          <h2 className="font-display text-xl uppercase leading-none tracking-tight">{title}</h2>
         </div>
         {extra}
       </div>
@@ -43,8 +43,8 @@ export function Track({ label, value, max, display, tone = "ink" }: { label: str
         <span>{label}</span>
         {display ? <span className="tabular-nums normal-case tracking-normal text-ink">{display}</span> : null}
       </div>
-      <div className="mt-1 h-1.5 bg-ink/10">
-        <div className={`h-1.5 ${fill}`} style={{ width: `${pct}%` }} />
+      <div className="mt-1.5 h-3 bg-ink/10">
+        <div className={`h-3 ${fill}`} style={{ width: `${pct}%` }} />
       </div>
     </div>
   );
@@ -59,9 +59,9 @@ export function Split({ leftLabel, rightLabel, left, right }: { leftLabel: strin
         <span>{leftLabel}</span>
         <span>{rightLabel}</span>
       </div>
-      <div className="mt-1 flex h-2 overflow-hidden bg-ink/10">
-        <div className="h-2 bg-pine" style={{ width: `${share}%` }} />
-        <div className="h-2 bg-rust" style={{ width: `${100 - share}%` }} />
+      <div className="mt-1.5 flex h-3 overflow-hidden bg-ink/10">
+        <div className="h-3 bg-pine" style={{ width: `${share}%` }} />
+        <div className="h-3 bg-rust" style={{ width: `${100 - share}%` }} />
       </div>
     </div>
   );

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Download, Upload } from "lucide-react";
 import { MapBoard } from "@/components/desk/map-board";
 import { Frame, Log } from "@/components/desk/desk";
-import { Notice, PageTitle, useWorld } from "@/components/desk/bits";
+import { Notice, useWorld } from "@/components/desk/bits";
 import { useDesk } from "@/game/store";
 import { money } from "@/game/sim";
 import { nextPayday, readTrip } from "@/components/desk/trip";
@@ -25,7 +25,6 @@ export function Overview() {
 
   return (
     <Frame>
-      <PageTitle kicker="Operations" title="Map" />
       <MapBoard route={null} />
       <dl className="grid grid-cols-2 border border-ink/10 sm:grid-cols-4">
         <Count label="Cash" value={money(company.cash)} hint={company.cash < 0 ? "In the red" : "In the bank"} />
@@ -54,8 +53,8 @@ export function Overview() {
                     </span>
                     <span className="tabular-nums text-ink/70">{Math.max(1, Math.round(trip.milesLeft)).toLocaleString("en-US")} mi</span>
                   </div>
-                  <div className="mt-2 h-1.5 bg-ink/10">
-                    <div className="h-1.5 bg-pine" style={{ width: `${done}%` }} />
+                  <div className="mt-2 h-3 bg-ink/10">
+                    <div className="h-3 bg-pine" style={{ width: `${done}%` }} />
                   </div>
                 </li>
               );

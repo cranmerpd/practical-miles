@@ -190,103 +190,115 @@ function LiveChrome() {
   const closeHours = company.negativeSince == null ? null : (closureDate(company.negativeSince).getTime() - EPOCH) / 3_600_000;
 
   return (
-    <div className="min-h-screen">
-      <header className="sticky top-0 z-30 border-b border-ink/15 bg-paper/95 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3">
-          <div className="min-w-0">
-            <p className="truncate text-[10px] font-medium uppercase tracking-[0.22em] text-pine">{localDay(world.simHours, company.homeZip).label}</p>
-            <h1 className="truncate font-display text-2xl uppercase leading-none tracking-tight sm:text-3xl">{company.name}</h1>
-            <p className="mt-1 text-sm tabular-nums text-ink/70">{localDay(world.simHours, company.homeZip).clock} local</p>
-          </div>
-          <div className="flex shrink-0 items-center gap-1">
-            <div className="flex" role="group" aria-label="Speed">
-              {([1, 2, 4, 8] as const).map((rate) => (
-                <button
-                  key={rate}
-                  type="button"
-                  aria-pressed={speed === rate}
-                  className={`min-h-11 min-w-11 border px-2 text-sm tabular-nums ${rate === 1 ? "" : "-ml-px"} ${speed === rate ? "relative z-10 border-ink bg-ink text-paper" : "border-ink/20 text-ink"}`}
-                  onClick={() => setSpeed(rate)}
-                >
-                  {rate}×
-                </button>
-              ))}
-            </div>
-            <Button
-              variant={paused ? "primary" : "quiet"}
-              onClick={() => {
-                setSure(false);
-                togglePause();
-              }}
-            >
-              {paused ? <Play className="size-4" aria-hidden /> : <Pause className="size-4" aria-hidden />}
-              {paused ? "Resume" : "Pause"}
-            </Button>
-          </div>
-        </div>
-        <dl className="mx-auto grid max-w-6xl grid-cols-3 border-t border-ink/10">
-          <Stat label="Cash" value={money(company.cash)} alert={company.cash < 0} />
-          <Stat label="Reputation" value={String(company.rep)} />
-          <Stat label="Diesel" value={`$${world.diesel.toFixed(2)}`} />
+    <div className="min-h-screen md:grid md:grid-cols-[14rem_minmax(0,1fr)]">
+      <aside className="sticky top-0 z-30 hidden h-screen flex-col border-r border-ink/15 bg-sheet px-4 py-5 md:flex">
+        <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-pine">{localDay(world.simHours, company.homeZip).label}</p>
+        <h1 className="mt-2 font-display text-3xl uppercase leading-none tracking-tight">{company.name}</h1>
+        <p className="mt-2 text-sm tabular-nums text-ink/60">{localDay(world.simHours, company.homeZip).clock}</p>
+        <dl className="mt-6 space-y-3">
+          <RailStat label="Cash" value={money(company.cash)} alert={company.cash < 0} />
+          <RailStat label="Reputation" value={String(company.rep)} />
+          <RailStat label="Diesel" value={`$${world.diesel.toFixed(2)}`} />
         </dl>
-        {(world.notices ?? []).slice(0, 2).map((item) => (
-          <div key={item.id} className="mx-auto flex max-w-6xl items-start justify-between gap-3 border-t border-ink/10 px-4 py-2">
-            <p className={`text-sm ${item.tone === "bad" ? "text-rust" : item.tone === "good" ? "text-pine" : "text-ink/80"}`}>{item.text}</p>
-            <button type="button" className="shrink-0 text-xs uppercase tracking-widest text-ink/45" onClick={() => dismissNotice(item.id)}>
-              Dismiss
-            </button>
-          </div>
-        ))}
-        <nav className="mx-auto hidden max-w-6xl gap-1 overflow-x-auto px-4 py-2 md:flex" aria-label="Company">
+        <nav className="mt-8 flex flex-col gap-1" aria-label="Company">
           {NAV.map((item) => (
             <NavLink key={item.to} to={item.to} label={item.label} active={isActive(path, item.to)} />
           ))}
         </nav>
-      </header>
-      <main className="mx-auto w-full max-w-6xl space-y-4 px-4 py-5 pb-28 md:pb-10">
-        {paused ? (
-          <div className="space-y-3 border border-ink/15 bg-sheet p-4">
-            <p className="text-sm text-ink/60">Paused. Closing the page will not move the clock, run payroll, or count the three months.</p>
-            {sure ? (
-              <div className="space-y-3">
-                <p className="text-sm">Are you sure? {company.name} is deleted. The clock, the rivals, the loads, and the diesel price all start over. You pick a new name.</p>
-                <div className="flex flex-wrap gap-2">
-                  <Button onClick={() => abandon()}>Yes, start over</Button>
-                  <Button variant="quiet" onClick={() => setSure(false)}>
-                    No
-                  </Button>
-                </div>
+      </aside>
+      <div className="min-w-0">
+        <header className="sticky top-0 z-20 border-b border-ink/15 bg-paper/95 backdrop-blur">
+          <div className="flex items-center justify-between gap-3 px-4 py-3">
+            <div className="min-w-0 md:hidden">
+              <p className="truncate text-[10px] font-medium uppercase tracking-[0.22em] text-pine">{localDay(world.simHours, company.homeZip).label}</p>
+              <h1 className="truncate font-display text-2xl uppercase leading-none tracking-tight">{company.name}</h1>
+            </div>
+            <p className="hidden text-sm tabular-nums text-ink/60 md:block">{localDay(world.simHours, company.homeZip).clock} local</p>
+            <div className="flex shrink-0 items-center gap-1">
+              <div className="flex" role="group" aria-label="Speed">
+                {([1, 2, 4, 8] as const).map((rate) => (
+                  <button
+                    key={rate}
+                    type="button"
+                    aria-pressed={speed === rate}
+                    className={`min-h-11 min-w-11 border px-2 text-sm tabular-nums ${rate === 1 ? "" : "-ml-px"} ${speed === rate ? "relative z-10 border-ink bg-ink text-paper" : "border-ink/20 text-ink"}`}
+                    onClick={() => setSpeed(rate)}
+                  >
+                    {rate}×
+                  </button>
+                ))}
               </div>
-            ) : (
-              <Button variant="quiet" onClick={() => setSure(true)}>
-                Start over
-              </Button>
-            )}
-          </div>
-        ) : null}
-        {closeHours != null ? (
-          <p className="text-sm text-rust">The bank account is negative. If it is still red on {whenLabel(closeHours)}, the company closes.</p>
-        ) : null}
-        <Outlet />
-      </main>
-      <nav className="nav-safe fixed inset-x-0 bottom-0 z-30 border-t border-ink/15 bg-paper md:hidden" aria-label="Company">
-        <div className="nav-scroll flex overflow-x-auto">
-          {NAV.map((item) => {
-            const Icon = item.icon;
-            const active = isActive(path, item.to);
-            return (
-              <Link
-                key={item.to}
-                to={item.to}
-                className={`flex min-h-14 min-w-[4.6rem] shrink-0 flex-col items-center justify-center gap-0.5 border-t-2 px-1 text-[10px] font-medium uppercase tracking-wide ${active ? "border-pine text-ink" : "border-transparent text-ink/40"}`}
+              <Button
+                variant={paused ? "primary" : "quiet"}
+                onClick={() => {
+                  setSure(false);
+                  togglePause();
+                }}
               >
-                <Icon className="size-5" aria-hidden />
-                {item.label}
-              </Link>
-            );
-          })}
-        </div>
-      </nav>
+                {paused ? <Play className="size-4" aria-hidden /> : <Pause className="size-4" aria-hidden />}
+                {paused ? "Resume" : "Pause"}
+              </Button>
+            </div>
+          </div>
+          <dl className="grid grid-cols-3 border-t border-ink/10 md:hidden">
+            <Stat label="Cash" value={money(company.cash)} alert={company.cash < 0} />
+            <Stat label="Reputation" value={String(company.rep)} />
+            <Stat label="Diesel" value={`$${world.diesel.toFixed(2)}`} />
+          </dl>
+          {(world.notices ?? []).slice(0, 2).map((item) => (
+            <div key={item.id} className="flex items-start justify-between gap-3 border-t border-ink/10 px-4 py-2">
+              <p className={`text-sm ${item.tone === "bad" ? "text-rust" : item.tone === "good" ? "text-pine" : "text-ink/80"}`}>{item.text}</p>
+              <button type="button" className="shrink-0 text-xs uppercase tracking-widest text-ink/45" onClick={() => dismissNotice(item.id)}>
+                Dismiss
+              </button>
+            </div>
+          ))}
+        </header>
+        <main className="w-full space-y-4 px-4 py-5 pb-28 md:pb-10">
+          {paused ? (
+            <div className="space-y-3 border border-ink/15 bg-sheet p-4">
+              <p className="text-sm text-ink/60">Paused. Closing the page will not move the clock, run payroll, or count the three months.</p>
+              {sure ? (
+                <div className="space-y-3">
+                  <p className="text-sm">Are you sure? {company.name} is deleted. The clock, the rivals, the loads, and the diesel price all start over. You pick a new name.</p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button onClick={() => abandon()}>Yes, start over</Button>
+                    <Button variant="quiet" onClick={() => setSure(false)}>
+                      No
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Button variant="quiet" onClick={() => setSure(true)}>
+                  Start over
+                </Button>
+              )}
+            </div>
+          ) : null}
+          {closeHours != null ? (
+            <p className="text-sm text-rust">The bank account is negative. If it is still red on {whenLabel(closeHours)}, the company closes.</p>
+          ) : null}
+          <Outlet />
+        </main>
+        <nav className="nav-safe fixed inset-x-0 bottom-0 z-30 border-t border-ink/15 bg-paper md:hidden" aria-label="Company">
+          <div className="nav-scroll flex overflow-x-auto">
+            {NAV.map((item) => {
+              const Icon = item.icon;
+              const active = isActive(path, item.to);
+              return (
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  className={`flex min-h-14 min-w-[4.6rem] shrink-0 flex-col items-center justify-center gap-0.5 border-t-2 px-1 text-[10px] font-medium uppercase tracking-wide ${active ? "border-pine text-ink" : "border-transparent text-ink/40"}`}
+                >
+                  <Icon className="size-5" aria-hidden />
+                  {item.label}
+                </Link>
+              );
+            })}
+          </div>
+        </nav>
+      </div>
     </div>
   );
 }
@@ -300,10 +312,19 @@ function NavLink({ to, label, active }: { to: (typeof NAV)[number]["to"]; label:
   return (
     <Link
       to={to}
-      className={`inline-flex min-h-11 items-center border-b-2 px-3 text-xs font-medium uppercase tracking-[0.18em] ${active ? "border-pine text-ink" : "border-transparent text-ink/40 hover:text-ink/70"}`}
+      className={`border-l-2 px-3 py-2 text-sm font-medium uppercase tracking-[0.16em] ${active ? "border-pine bg-ink/10 text-ink" : "border-transparent text-ink/45 hover:text-ink"}`}
     >
       {label}
     </Link>
+  );
+}
+
+function RailStat({ label, value, alert = false }: { label: string; value: string; alert?: boolean }) {
+  return (
+    <div>
+      <dt className="text-[10px] uppercase tracking-[0.18em] text-ink/40">{label}</dt>
+      <dd className={`truncate font-display text-3xl leading-none tabular-nums ${alert ? "text-rust" : ""}`}>{value}</dd>
+    </div>
   );
 }
 

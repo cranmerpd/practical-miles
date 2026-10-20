@@ -339,8 +339,8 @@ function Meter({ label, used, cap }: { label: string; used: number; cap: number 
           {Math.round(used).toLocaleString("en-US")} / {Math.round(cap).toLocaleString("en-US")}
         </span>
       </div>
-      <div className="h-1 bg-ink/10">
-        <div className="h-1 bg-ink" style={{ width: `${pct}%` }} />
+      <div className="h-3 bg-ink/10">
+        <div className="h-3 bg-ink" style={{ width: `${pct}%` }} />
       </div>
     </div>
   );

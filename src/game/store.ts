@@ -7,6 +7,7 @@ import {
   buyYard,
   cancelShipment,
   blankWorld,
+  createWorld,
   warmWorld,
   dispatchLoop,
   divertToYard,
@@ -55,6 +56,7 @@ type DeskState = {
   dispatch: (warehouseId: string, vehicleId: string, driverId: string, shipmentIds: string[], trailerId?: string, atDawn?: boolean) => string | null;
   restart: (name: string, zip: string, easy?: boolean) => string | null;
   abandon: () => void;
+  dismissNotice: (id: string) => void;
   exportSave: () => string;
   importSave: (raw: string) => string | null;
 };
@@ -226,20 +228,23 @@ export const useDesk = create<DeskState>((set, get) => ({
     return error;
   },
   restart: (name, zip, easy) => {
-    const world = get().world;
-    world.company = null;
+    const world = createWorld(Date.now() % 1_000_000_000);
     const error = foundCompany(world, name, zip, easy);
     if (error) return error;
-    set({ frame: get().frame + 1, paused: false });
+    set({ world, frame: get().frame + 1, paused: false });
     persist(world, false);
     return null;
   },
   abandon: () => {
-    const world = get().world;
-    world.company = null;
-    world.heldJobId = null;
-    set({ frame: get().frame + 1, paused: true });
+    const world = createWorld(Date.now() % 1_000_000_000);
+    set({ world, paused: true, frame: get().frame + 1 });
     persist(world, true);
+  },
+  dismissNotice: (id) => {
+    const world = get().world;
+    world.notices = (world.notices ?? []).filter((item) => item.id !== id);
+    set({ frame: get().frame + 1 });
+    persist(world, get().paused);
   },
   exportSave: () => JSON.stringify({ world: get().world, paused: get().paused }),
   importSave: (raw) => {

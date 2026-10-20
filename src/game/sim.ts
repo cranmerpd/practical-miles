@@ -234,6 +234,7 @@ export type World = {
   heldJobId: string | null;
   yardOffers: YardOffer[];
   rules?: string;
+  notices?: LogLine[];
 };
 
 export type Ghost = { id: string; name: string; points: MapPoint[]; miles: number; traveled: number };
@@ -323,6 +324,13 @@ function uid(world: World, prefix: string): string {
 function log(world: World, text: string, tone: LogLine["tone"] = "info") {
   world.log.unshift({ id: uid(world, "log"), at: world.simHours, text, tone });
   if (world.log.length > 80) world.log.length = 80;
+}
+
+function notify(world: World, text: string, tone: LogLine["tone"] = "info") {
+  log(world, text, tone);
+  if (!world.notices) world.notices = [];
+  world.notices.unshift({ id: uid(world, "note"), at: world.simHours, text, tone });
+  if (world.notices.length > 8) world.notices.length = 8;
 }
 
 export function wageFor(skill: number, cdl: boolean): number {
@@ -798,6 +806,69 @@ function stopMix(world: World, local: boolean): { pickup: StopKind; drop: StopKi
   return { pickup: "residential", drop: "commercial", pay: 1.05 };
 }
 
+function makeLaneJob(world: World, anchorZip: string): MarketJob | null {
+  const outbound = rngNext(world) < 0.55;
+  const near = pickByHub(world, anchorZip, 8, 75);
+  const far = pickByHub(world, anchorZip, 350, 1400);
+  if (!near || !far || near.zip === far.zip) return null;
+  const from = outbound ? near.zip : far.zip;
+  const to = outbound ? far.zip : near.zip;
+  const plan = planRoad(from, to);
+  if (!plan || plan.miles < 250 || plan.miles > 1800) return null;
+  const fragile = rngNext(world) < 0.18;
+  const heavy = rngNext(world) < 0.35;
+  const weight = heavy ? 8000 + ri(world, 28000) : 900 + ri(world, 7000);
+  const cube = Math.round(weight * (0.12 + rngNext(world) * 0.16));
+  const lateFee = rngNext(world) < 0.08;
+  const rate = (plan.miles < 400 ? 2.5 : 2.05) * (1 + 0.08 * Math.sin(world.simHours / 36));
+  const stops = stopMix(world, false);
+  const pay = Math.round(plan.miles * rate * (fragile ? 1.08 : 1) * (lateFee ? 1.06 : 1) * stops.pay);
+  const dueAt = dueAtFor(world.simHours, plan.miles, to, stops.drop);
+  return {
+    id: uid(world, "job"),
+    mode: "road",
+    fromZip: from,
+    toZip: to,
+    miles: plan.miles,
+    weight,
+    cube,
+    fragile,
+    cargoValue: Math.round((6000 + rngNext(world) * 50000) * (fragile ? 1.4 : 1)),
+    pay,
+    lateFee,
+    dueInHours: Math.max(24, dueAt - world.simHours),
+    postedAt: world.simHours,
+    expiresAt: world.simHours + 36 + rngNext(world) * 36,
+    pickupKind: stops.pickup,
+    dropKind: stops.drop,
+  };
+}
+
+function lanesTouching(world: World, anchors: string[]): number {
+  return world.jobs.filter((job) => {
+    if (job.mode !== "road" || job.miles < 250) return false;
+    return anchors.some((zip) => nearPlace(job.fromZip, zip, 80) || nearPlace(job.toZip, zip, 80));
+  }).length;
+}
+
+function nearPlace(zip: string, anchor: string, miles: number): boolean {
+  const place = lookupZip(zip);
+  const home = lookupZip(anchor);
+  if (!place || !home) return false;
+  return havMiles(place.lat, place.lon, home.lat, home.lon) <= miles;
+}
+
+function fillLanes(world: World, anchors: string[], target: number) {
+  let lanes = lanesTouching(world, anchors);
+  let tries = 0;
+  while (lanes < target && tries++ < target * 8) {
+    const job = makeLaneJob(world, anchors[ri(world, anchors.length)]);
+    if (!job) continue;
+    world.jobs.push(job);
+    lanes++;
+  }
+}
+
 function refillBoard(world: World, roadTarget = 36) {
   if (world.company) {
     let local = world.jobs.filter((job) => job.mode === "road" && job.miles <= 180 && job.weight <= 2800 && job.cube <= 400).length;
@@ -808,6 +879,11 @@ function refillBoard(world: World, roadTarget = 36) {
       world.jobs.push(job);
       local++;
     }
+    fillLanes(world, world.company.warehouses.map((yard) => yard.zip), 8);
+  }
+  for (const rival of world.rivals) {
+    if (rival.closed || !rival.hqZip) continue;
+    fillLanes(world, [rival.hqZip, ...(rival.yards ?? [])], 3);
   }
   let road = world.jobs.filter((job) => job.mode === "road" && job.miles > 180).length;
   let guard = 0;
@@ -2038,7 +2114,7 @@ export function sendOnBreak(world: World, driverId: string): string | null {
   driver.driveToday = 0;
   driver.breakTaken = false;
   driver.restUntil = world.simHours + 10;
-  log(world, `${driver.name} is on a 10-hour break at the warehouse. Off the board until it ends.`, "info");
+  notify(world, `${driver.name} is on a 10-hour break at the warehouse. Off the board until it ends.`, "info");
   return null;
 }
 
@@ -2306,12 +2382,10 @@ function finishDelivery(world: World, company: Company, shipment: Shipment, vehi
       shipment.lateNoted = true;
     }
     rep = -6;
-    log(world, `Late into ${labelPlace(shipment.toZip)}. Reputation drops once.`, "bad");
     if (shipment.lateFee) {
       lateDays = Math.max(1, Math.ceil(lateHours / 24));
       lateCut = Math.min(payout, shipment.pay * 0.2 * lateDays);
       payout -= lateCut;
-      log(world, `Late fee ${money(lateCut)} on a marked load (${lateDays} day${lateDays === 1 ? "" : "s"}).`, "bad");
     }
   } else {
     bumpRep(company, 2);
@@ -2331,7 +2405,14 @@ function finishDelivery(world: World, company: Company, shipment: Shipment, vehi
     pushCash(world, company, -damage, `Damage claim ${money(damage)} on ${fragile ? "fragile " : ""}freight worth ${money(shipment.cargoValue)}.`, "bad");
   }
   if (payout > 0) pushCash(world, company, payout, `Delivery paid ${money(payout)}.`, "good");
-  else log(world, "Delivery finished with nothing left of the balance.", "bad");
+  const where = labelPlace(shipment.toZip);
+  notify(
+    world,
+    late
+      ? `Delivered late in ${where}.${lateCut > 0 ? ` Late fee ${money(lateCut)}.` : ""} ${payout > 0 ? `${money(payout)} reached the bank.` : "Nothing left of the balance."}`
+      : `Delivered in ${where}. ${money(payout)} reached the bank.`,
+    late || payout <= 0 ? "bad" : "good",
+  );
   const miles = vehicle.routeMiles > 1 ? vehicle.routeMiles : (planRoad(shipment.fromZip, shipment.toZip)?.miles ?? 0);
   noteDelivery(world, company, {
     id: uid(world, "drop"),
@@ -2518,6 +2599,7 @@ function arrive(world: World, company: Company, vehicle: Vehicle) {
           : `${stored} loads stored at ${labelPlace(yard?.zip ?? leg.toZip)}. The balances still wait, and the due days keep running.`,
         "info",
       );
+      notify(world, stored === 1 ? `Freight stored at ${labelPlace(yard?.zip ?? leg.toZip)}.` : `${stored} loads stored at ${labelPlace(yard?.zip ?? leg.toZip)}.`, "good");
       return;
     }
     if (left.length) {
@@ -2547,11 +2629,13 @@ function arrive(world: World, company: Company, vehicle: Vehicle) {
     vehicle.legs = [];
     if (warehouseAt(company, vehicle.zip)) releaseCrew(company, vehicle, true);
     log(world, `Empty move ended in ${labelPlace(vehicle.zip)}.`, "info");
+    notify(world, `Truck is back in ${labelPlace(vehicle.zip)}.`, "good");
     return;
   }
   if (leg.kind === "pickup") {
     const shipment = leg.shipmentId ? company.shipments.find((item) => item.id === leg.shipmentId) : undefined;
     if (shipment) shipment.status = "rolling";
+    notify(world, `Pickup finished in ${labelPlace(leg.toZip)}.`, "good");
   }
   if (vehicle.legs.length === 0) {
     vehicle.status = "idle";
@@ -2570,9 +2654,9 @@ function moveVehicle(world: World, company: Company, vehicle: Vehicle, dt: numbe
     }
   }
   if (vehicle.status !== "enroute" && vehicle.status !== "inbound") return;
-  if (vehicle.restUntil != null && world.simHours < vehicle.restUntil) return;
   const spec = KIND_INFO[vehicle.kind];
   const driver = vehicle.driverId ? company.drivers.find((item) => item.id === vehicle.driverId) : undefined;
+  if (vehicle.restUntil != null && world.simHours < vehicle.restUntil) return;
   const mph = vehicle.status === "inbound" ? 50 : (spec.cruise || 55) * skillSpeed(driver?.skill ?? 50);
   let hours = dt;
   let driveToday = driver?.driveToday ?? vehicle.driveToday;
@@ -2614,7 +2698,7 @@ function moveVehicle(world: World, company: Company, vehicle: Vehicle, dt: numbe
         const close = kind === "commercial" ? "5pm" : "8pm";
         const what = kind === "commercial" ? "commercial stop" : kind === "residential" ? "house stop" : "stop";
         if (vehicle.restUntil == null || vehicle.restUntil <= world.simHours) {
-          log(world, `The ${what} in ${labelPlace(leg.toZip)} is closed. It is open 8am to ${close} local.`, "info");
+          notify(world, `The ${what} in ${labelPlace(leg.toZip)} is closed. It is open 8am to ${close} local.`, "info");
         }
         vehicle.restUntil = world.simHours + wait;
         if (wait > 2) writeDuty(driver, vehicle, 0, false, vehicle.restUntil);
@@ -2703,6 +2787,13 @@ export function advance(world: World, dtHours: number) {
       refillBoard(world);
       refillListings(world);
       if (company) {
+        for (const driver of company.drivers) {
+          if (driver.vehicleId || driver.restUntil == null || world.simHours < driver.restUntil) continue;
+          driver.restUntil = null;
+          driver.breakTaken = false;
+          driver.driveToday = 0;
+          notify(world, `${driver.name} finished the break and can be dispatched.`, "good");
+        }
         for (const yard of company.warehouses) refillApplicants(world, yard);
         refillYards(world);
       }

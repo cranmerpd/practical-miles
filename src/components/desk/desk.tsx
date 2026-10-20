@@ -183,6 +183,7 @@ function LiveChrome() {
   const setSpeed = useDesk((s) => s.setSpeed);
   const togglePause = useDesk((s) => s.togglePause);
   const abandon = useDesk((s) => s.abandon);
+  const dismissNotice = useDesk((s) => s.dismissNotice);
   const path = useRouterState({ select: (state) => state.location.pathname });
   const [sure, setSure] = useState(false);
   if (!company) return null;
@@ -228,6 +229,14 @@ function LiveChrome() {
           <Stat label="Reputation" value={String(company.rep)} />
           <Stat label="Diesel" value={`$${world.diesel.toFixed(2)}`} />
         </dl>
+        {(world.notices ?? []).slice(0, 2).map((item) => (
+          <div key={item.id} className="mx-auto flex max-w-6xl items-start justify-between gap-3 border-t border-ink/10 px-4 py-2">
+            <p className={`text-sm ${item.tone === "bad" ? "text-rust" : item.tone === "good" ? "text-pine" : "text-ink/80"}`}>{item.text}</p>
+            <button type="button" className="shrink-0 text-xs uppercase tracking-widest text-ink/45" onClick={() => dismissNotice(item.id)}>
+              Dismiss
+            </button>
+          </div>
+        ))}
         <nav className="mx-auto hidden max-w-6xl gap-1 overflow-x-auto px-4 py-2 md:flex" aria-label="Company">
           {NAV.map((item) => (
             <NavLink key={item.to} to={item.to} label={item.label} active={isActive(path, item.to)} />
@@ -240,7 +249,7 @@ function LiveChrome() {
             <p className="text-sm text-ink/60">Paused. Closing the page will not move the clock, run payroll, or count the three months.</p>
             {sure ? (
               <div className="space-y-3">
-                <p className="text-sm">Are you sure? {company.name} is gone. Trucks, drivers, and cash go with it. You start over with a new name.</p>
+                <p className="text-sm">Are you sure? {company.name} is deleted. The clock, the rivals, the loads, and the diesel price all start over. You pick a new name.</p>
                 <div className="flex flex-wrap gap-2">
                   <Button onClick={() => abandon()}>Yes, start over</Button>
                   <Button variant="quiet" onClick={() => setSure(false)}>

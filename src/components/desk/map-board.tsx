@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { hubs, labelPlace, lookupZip, MAP, pointAlong, project, roadSegments, type MapPoint } from "@/game/geo";
 import { KIND_INFO, money, type Vehicle } from "@/game/sim";
 import { useWorld } from "@/components/desk/bits";
@@ -62,29 +62,153 @@ function spot(vehicle: Vehicle): MapPoint | null {
   return lookupZip(vehicle.zip) ?? null;
 }
 
+const MAP_BOX = { x: -28, y: -18, w: 1056, h: 656 };
+
+type Frame = { x: number; y: number; w: number; h: number };
+
+function clampFrame(frame: Frame): Frame {
+  const w = Math.min(MAP_BOX.w, Math.max(MAP_BOX.w / 14, frame.w));
+  const h = w * (MAP_BOX.h / MAP_BOX.w);
+  const x = Math.min(MAP_BOX.x + MAP_BOX.w - w * 0.25, Math.max(MAP_BOX.x - w * 0.75, frame.x));
+  const y = Math.min(MAP_BOX.y + MAP_BOX.h - h * 0.25, Math.max(MAP_BOX.y - h * 0.75, frame.y));
+  return { x, y, w, h };
+}
+
 export function MapBoard({ route, fit = false, compact = false }: { route: MapPoint[] | null; fit?: boolean; compact?: boolean }) {
   const { world, company } = useWorld();
   const preview = route && route.length > 1 ? line(route) : "";
   const [hover, setHover] = useState<string | null>(null);
   const [pin, setPin] = useState<string | null>(null);
+  const [frame, setFrame] = useState<Frame>(MAP_BOX);
   const hot = pin ?? hover;
   const trucks = (company?.vehicles ?? []).filter(
     (vehicle) => vehicle.kind !== "trailer53" || !company?.vehicles.some((other) => other.coupledTrailerId === vehicle.id),
   );
+  const svgRef = useRef<SVGSVGElement>(null);
+  const frameRef = useRef(frame);
+  frameRef.current = frame;
+  const drag = useRef<{ id: number; x: number; y: number; vx: number; vy: number; moved: boolean } | null>(null);
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const pinch = useRef<{ dist: number; frame: Frame } | null>(null);
+  const skipClick = useRef(false);
+  const unit = frame.w / MAP_BOX.w;
+  const px = (size: number) => size * unit;
+
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const rect = svg.getBoundingClientRect();
+      const current = frameRef.current;
+      const pxn = (event.clientX - rect.left) / rect.width;
+      const pyn = (event.clientY - rect.top) / rect.height;
+      const factor = event.deltaY < 0 ? 0.82 : 1.22;
+      const w = current.w * factor;
+      const next = clampFrame({
+        x: current.x + pxn * current.w - pxn * w,
+        y: current.y + pyn * current.h - pyn * (w * (MAP_BOX.h / MAP_BOX.w)),
+        w,
+        h: w,
+      });
+      setFrame(next);
+    };
+    svg.addEventListener("wheel", onWheel, { passive: false });
+    return () => svg.removeEventListener("wheel", onWheel);
+  }, []);
+
+  function zoomBy(factor: number) {
+    setFrame((current) => {
+      const w = current.w * factor;
+      const h = w * (MAP_BOX.h / MAP_BOX.w);
+      return clampFrame({ x: current.x + current.w / 2 - w / 2, y: current.y + current.h / 2 - h / 2, w, h });
+    });
+  }
+
+  function pointerDown(event: React.PointerEvent<SVGSVGElement>) {
+    if (event.button !== 0) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, vx: frameRef.current.x, vy: frameRef.current.y, moved: false };
+    pinch.current = null;
+  }
+
+  function pointerMove(event: React.PointerEvent<SVGSVGElement>) {
+    const point = pointers.current.get(event.pointerId);
+    if (point) {
+      point.x = event.clientX;
+      point.y = event.clientY;
+    }
+    const pts = [...pointers.current.values()];
+    if (pts.length >= 2) {
+      const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      if (!pinch.current) pinch.current = { dist, frame: frameRef.current };
+      const factor = pinch.current.dist / Math.max(8, dist);
+      const base = pinch.current.frame;
+      const w = base.w * factor;
+      setFrame(clampFrame({ x: base.x + base.w / 2 - w / 2, y: base.y + base.h / 2 - (w * (MAP_BOX.h / MAP_BOX.w)) / 2, w, h: w }));
+      skipClick.current = true;
+      return;
+    }
+    const held = drag.current;
+    if (!held || held.id !== event.pointerId) return;
+    const dx = event.clientX - held.x;
+    const dy = event.clientY - held.y;
+    if (Math.hypot(dx, dy) < 5) return;
+    held.moved = true;
+    skipClick.current = true;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const current = frameRef.current;
+    setFrame(clampFrame({ ...current, x: held.vx - dx * (current.w / rect.width), y: held.vy - dy * (current.h / rect.height) }));
+  }
+
+  function pointerUp(event: React.PointerEvent<SVGSVGElement>) {
+    pointers.current.delete(event.pointerId);
+    if (pointers.current.size < 2) pinch.current = null;
+    const held = drag.current;
+    if (held?.id === event.pointerId) drag.current = null;
+    if (held && !held.moved && (event.target === event.currentTarget || (event.target as SVGElement).dataset.map === "ground")) setPin(null);
+    requestAnimationFrame(() => {
+      skipClick.current = false;
+    });
+  }
+
+  function pick(id: string) {
+    return (event: React.MouseEvent) => {
+      event.stopPropagation();
+      if (skipClick.current) return;
+      setPin((value) => (value === id ? null : id));
+    };
+  }
 
   return (
-    <figure className={fit ? "grid h-auto overflow-hidden rounded-lg border border-ink/10 bg-sheet lg:h-full lg:min-h-0 lg:grid-rows-[minmax(0,1fr)_auto]" : "overflow-hidden rounded-lg border border-ink/10 bg-sheet"}>
+    <figure className={`relative ${fit ? "grid h-auto overflow-hidden rounded-lg border border-ink/10 bg-sheet lg:h-full lg:min-h-0 lg:grid-rows-[minmax(0,1fr)_auto]" : "overflow-hidden rounded-lg border border-ink/10 bg-sheet"}`}>
+      <div className="absolute right-2 top-2 z-10 flex gap-1">
+        <button type="button" className="min-h-9 min-w-9 border border-ink/20 bg-paper/90 text-sm" onClick={() => zoomBy(0.75)} aria-label="Zoom in">
+          +
+        </button>
+        <button type="button" className="min-h-9 min-w-9 border border-ink/20 bg-paper/90 text-sm" onClick={() => zoomBy(1.33)} aria-label="Zoom out">
+          −
+        </button>
+        <button type="button" className="min-h-9 border border-ink/20 bg-paper/90 px-2 text-xs uppercase tracking-wide" onClick={() => setFrame(MAP_BOX)}>
+          Fit
+        </button>
+      </div>
       <svg
-        viewBox="-28 -18 1056 656"
+        ref={svgRef}
+        viewBox={`${frame.x} ${frame.y} ${frame.w} ${frame.h}`}
         role="img"
-        aria-label="Highway map of the lower 48. Tap a truck, a city, or a warehouse."
-        className={fit ? "h-auto max-h-[46dvh] w-full touch-manipulation lg:h-full lg:max-h-full lg:min-h-0" : compact ? "h-52 w-full touch-manipulation" : "h-auto w-full touch-manipulation"}
-        style={fit || compact ? undefined : { aspectRatio: `${MAP.width} / ${MAP.height}` }}
+        aria-label="Highway map of the lower 48. Drag to move. Scroll or pinch to zoom. Tap a truck, a city, or a warehouse."
+        className={`cursor-grab touch-none active:cursor-grabbing ${fit ? "h-auto max-h-[46dvh] w-full lg:h-full lg:max-h-full lg:min-h-0" : compact ? "h-52 w-full" : "h-auto w-full"}`}
+        style={fit || compact ? { touchAction: "none" } : { aspectRatio: `${MAP.width} / ${MAP.height}`, touchAction: "none" }}
         preserveAspectRatio="xMidYMid meet"
-        onPointerDown={() => setPin(null)}
+        onPointerDown={pointerDown}
+        onPointerMove={pointerMove}
+        onPointerUp={pointerUp}
+        onPointerCancel={pointerUp}
       >
-        <rect x={-28} y={-18} width={1056} height={656} className="fill-sheet" />
-        <path d={HIGHWAY} className="fill-none stroke-ink/25" strokeWidth={1.15} />
+        <rect data-map="ground" x={MAP_BOX.x} y={MAP_BOX.y} width={MAP_BOX.w} height={MAP_BOX.h} className="fill-sheet" />
+        <path d={HIGHWAY} className="fill-none stroke-ink/25" strokeWidth={1.15} vectorEffect="non-scaling-stroke" />
         {CITIES.map((city) => {
           const on = hot === `city:${city.name}`;
           return (
@@ -93,13 +217,10 @@ export function MapBoard({ route, fit = false, compact = false }: { route: MapPo
               className="cursor-pointer"
               onPointerEnter={() => setHover(`city:${city.name}`)}
               onPointerLeave={() => setHover((value) => (value === `city:${city.name}` ? null : value))}
-              onPointerDown={(event) => {
-                event.stopPropagation();
-                setPin((value) => (value === `city:${city.name}` ? null : `city:${city.name}`));
-              }}
+              onClick={pick(`city:${city.name}`)}
             >
-              <circle cx={city.x} cy={city.y} r={on ? 4 : 1.8} className={on ? "fill-ink" : "fill-ink/40"} />
-              <text x={city.x} y={city.y - 6} textAnchor="middle" className={`font-sans ${on ? "fill-ink" : "fill-ink/55"}`} fontSize={on ? 14 : 11}>
+              <circle cx={city.x} cy={city.y} r={px(on ? 4 : 1.8)} className={on ? "fill-ink" : "fill-ink/40"} />
+              <text x={city.x} y={city.y - px(6)} textAnchor="middle" className={`font-sans ${on ? "fill-ink" : "fill-ink/55"}`} fontSize={px(on ? 14 : 11)}>
                 {city.name}
               </text>
             </g>
@@ -116,20 +237,17 @@ export function MapBoard({ route, fit = false, compact = false }: { route: MapPo
             const [x, y] = project(place.lat, place.lon);
             const id = `rival-yard:${rival.id}:${site.zip}`;
             const on = hot === id;
-            const color = `hsl(${rival.hue} 65% 62%)`;
-            const size = site.hq ? (on ? 7 : 5) : on ? 5 : 3.5;
+            const color = `hsl(${rival.hue} 72% 64%)`;
+            const size = px(site.hq ? (on ? 7 : 5) : on ? 5 : 3.5);
             return [
               <g
                 key={id}
                 className="cursor-pointer"
                 onPointerEnter={() => setHover(id)}
                 onPointerLeave={() => setHover((value) => (value === id ? null : value))}
-                onPointerDown={(event) => {
-                  event.stopPropagation();
-                  setPin((value) => (value === id ? null : id));
-                }}
+                onClick={pick(id)}
               >
-                <rect x={x - size} y={y - size} width={size * 2} height={size * 2} fill="none" stroke={color} strokeWidth={site.hq ? 2 : 1.4} />
+                <rect x={x - size} y={y - size} width={size * 2} height={size * 2} fill="none" stroke={color} strokeWidth={site.hq ? 2.2 : 1.5} vectorEffect="non-scaling-stroke" />
               </g>,
             ];
           });
@@ -141,7 +259,7 @@ export function MapBoard({ route, fit = false, compact = false }: { route: MapPo
             const [x, y] = project(at.lat, at.lon);
             const id = `rival-truck:${truck.id}`;
             const on = hot === id;
-            const color = `hsl(${rival.hue} 65% 62%)`;
+            const color = `hsl(${rival.hue} 72% 64%)`;
             const path = on ? line(truck.points) : "";
             return [
               <g
@@ -149,13 +267,11 @@ export function MapBoard({ route, fit = false, compact = false }: { route: MapPo
                 className="cursor-pointer"
                 onPointerEnter={() => setHover(id)}
                 onPointerLeave={() => setHover((value) => (value === id ? null : value))}
-                onPointerDown={(event) => {
-                  event.stopPropagation();
-                  setPin((value) => (value === id ? null : id));
-                }}
+                onClick={pick(id)}
               >
-                {path ? <path d={path} fill="none" stroke={color} strokeWidth={2} /> : null}
-                <circle cx={x} cy={y} r={on ? 6 : 3.4} fill={color} />
+                {path ? <path d={path} fill="none" stroke={color} strokeWidth={2.2} vectorEffect="non-scaling-stroke" /> : null}
+                <circle cx={x} cy={y} r={px(12)} fill="transparent" />
+                <circle cx={x} cy={y} r={px(on ? 6 : 3.6)} fill={color} />
               </g>,
             ];
           }),
@@ -172,13 +288,10 @@ export function MapBoard({ route, fit = false, compact = false }: { route: MapPo
               className="cursor-pointer"
               onPointerEnter={() => setHover(id)}
               onPointerLeave={() => setHover((value) => (value === id ? null : value))}
-              onPointerDown={(event) => {
-                event.stopPropagation();
-                setPin((value) => (value === id ? null : id));
-              }}
+              onClick={pick(id)}
             >
-              <rect x={x - (on ? 6 : 4)} y={y - (on ? 6 : 4)} width={on ? 12 : 8} height={on ? 12 : 8} className={on ? "fill-pine" : "fill-pine/80"} />
-              <text x={x + 10} y={y + 3} className={`font-sans ${on ? "fill-pine" : "fill-pine/80"}`} fontSize={on ? 13 : 11}>
+              <rect x={x - px(on ? 6 : 4)} y={y - px(on ? 6 : 4)} width={px(on ? 12 : 8)} height={px(on ? 12 : 8)} className={on ? "fill-pine" : "fill-pine/80"} />
+              <text x={x + px(10)} y={y + px(3)} className={`font-sans ${on ? "fill-pine" : "fill-pine/80"}`} fontSize={px(on ? 13 : 11)}>
                 {place.city}
               </text>
             </g>
@@ -191,40 +304,37 @@ export function MapBoard({ route, fit = false, compact = false }: { route: MapPo
           const id = `truck:${vehicle.id}`;
           const on = hot === id;
           const path = vehicle.route && vehicle.route.length > 1 && vehicle.status !== "idle" ? line(vehicle.route) : "";
-          const dx = (index % 4) * 5;
+          const dx = (index % 4) * px(5);
           return (
             <g
               key={vehicle.id}
               className="cursor-pointer"
               onPointerEnter={() => setHover(id)}
               onPointerLeave={() => setHover((value) => (value === id ? null : value))}
-              onPointerDown={(event) => {
-                event.stopPropagation();
-                setPin((value) => (value === id ? null : id));
-              }}
+              onClick={pick(id)}
             >
-              {path ? <path d={path} className={on ? "fill-none stroke-rust" : "fill-none stroke-rust/45"} strokeWidth={on ? 3 : 1.6} /> : null}
-              <circle cx={x + dx} cy={y} r={12} className="fill-transparent" />
-              <circle cx={x + dx} cy={y} r={on ? 8 : 5} className={vehicle.status === "idle" ? "fill-rust/80" : "fill-rust"} />
+              {path ? <path d={path} className={on ? "fill-none stroke-rust" : "fill-none stroke-rust/45"} strokeWidth={on ? 3 : 1.6} vectorEffect="non-scaling-stroke" /> : null}
+              <circle cx={x + dx} cy={y} r={px(14)} className="fill-transparent" />
+              <circle cx={x + dx} cy={y} r={px(on ? 7 : 4.5)} className={vehicle.status === "idle" ? "fill-rust/80" : "fill-rust"} />
             </g>
           );
         })}
-        {preview ? <path d={preview} className="pointer-events-none fill-none stroke-ink" strokeWidth={2.4} /> : null}
+        {preview ? <path d={preview} className="pointer-events-none fill-none stroke-ink" strokeWidth={2.4} vectorEffect="non-scaling-stroke" /> : null}
       </svg>
       <MapNote hot={hot} />
       <figcaption className="flex flex-wrap gap-x-4 gap-y-1 border-t border-ink/10 px-3 py-2 text-sm text-ink/70">
         <span className="inline-flex items-center gap-2">
-          <span className="size-2.5 rounded-full bg-rust" /> Your truck
+          <span className="size-2.5 rounded-full bg-rust" /> Your trucks
         </span>
         <span className="inline-flex items-center gap-2">
-          <span className="size-2.5 rounded-full bg-ink/50" /> Rival truck
+          <span className="size-2.5 bg-pine" /> Your warehouses
         </span>
-        <span className="inline-flex items-center gap-2">
-          <span className="size-2.5 bg-pine" /> Your warehouse
-        </span>
-        <span className="inline-flex items-center gap-2">
-          <span className="size-2.5 border border-ink/70" /> Rival yard
-        </span>
+        {world.rivals.map((rival) => (
+          <span key={rival.id} className="inline-flex items-center gap-2">
+            <span className="size-2.5 rounded-full" style={{ background: `hsl(${rival.hue} 72% 64%)` }} />
+            {rival.name}
+          </span>
+        ))}
       </figcaption>
     </figure>
   );

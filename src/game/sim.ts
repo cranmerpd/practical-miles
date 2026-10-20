@@ -1148,7 +1148,7 @@ function rollRivals(world: World): Rival[] {
   const taken = new Set<string>();
   for (const yard of world.company?.warehouses ?? []) taken.add(yard.zip);
   const big = [...hubs].filter((hub) => hub.weight >= 15).sort((a, b) => b.weight - a.weight);
-  const hues = [210, 4, 168, 28, 45, 250, 16, 90];
+  const hues = [48, 130, 280, 320, 85, 165];
   const rivals: Rival[] = [];
   for (let i = 0; i < SIZE_BANDS.length; i++) {
     const band = SIZE_BANDS[i];
@@ -1498,11 +1498,16 @@ function moveRivalTruck(world: World, rival: Rival, truck: RivalTruck, step: num
 }
 
 function ensureRivals(world: World): void {
-  if (rivalsReady(world)) return;
-  world.ghosts = [];
-  const prior = world.rivals.filter((rival) => Array.isArray(rival.trucks) && rival.hqZip);
-  world.rivals = prior.length ? prior.map((rival) => upgradeRival(world, rival)) : rollRivals(world);
-  for (const rival of world.rivals) rivalDecide(world, rival);
+  if (!rivalsReady(world)) {
+    world.ghosts = [];
+    const prior = world.rivals.filter((rival) => Array.isArray(rival.trucks) && rival.hqZip);
+    world.rivals = prior.length ? prior.map((rival) => upgradeRival(world, rival)) : rollRivals(world);
+    for (const rival of world.rivals) rivalDecide(world, rival);
+  }
+  const hues = [48, 130, 280, 320, 85, 165];
+  world.rivals.forEach((rival, index) => {
+    rival.hue = hues[index % hues.length];
+  });
 }
 
 function refillApplicants(world: World, yard: Warehouse) {

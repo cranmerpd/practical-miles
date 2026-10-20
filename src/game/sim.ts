@@ -135,6 +135,7 @@ export type Shipment = {
   lateNoted: boolean;
   pickupKind?: StopKind;
   dropKind?: StopKind;
+  runStarted?: boolean;
 };
 
 export type Listing = {
@@ -253,6 +254,9 @@ export type Quote = {
   arriveAt: number;
   unloadAt: number;
   dockClosed: boolean;
+  pickupArrive: number;
+  pickupReady: number;
+  pickupClosed: boolean;
   stageAt: number | null;
 };
 
@@ -482,7 +486,30 @@ export function tripEta(simHours: number, miles: number, cruise: number, skill: 
   const clock = rollDuty(driveHoursFor(Math.max(0, miles), cruise || 60, skill), driven, broke);
   const arrive = simHours + (miles <= 0.05 ? 0 : clock.elapsed);
   const wait = dock ? dockWait(arrive, zip, kind) : 0;
-  return { at: arrive + wait, driven: wait > 2 ? 0 : clock.driven, broke: wait > 2 ? false : clock.broke };
+  return { at: arrive + wait, arrive, wait, driven: wait > 2 ? 0 : clock.driven, broke: wait > 2 ? false : clock.broke };
+}
+
+export function runDaysFor(miles: number): number {
+  if (miles < 120) return 1;
+  if (miles < 400) return 2;
+  if (miles < 900) return 3;
+  return 4;
+}
+
+export function offerWhen(lateFee: boolean, dueAt: number, simHours: number, zip: string, miles: number): string {
+  if (lateFee) return dueDayLabel(simHours, dueAt, zip);
+  const days = runDaysFor(miles);
+  return days === 1 ? "1-day run" : `${days}-day run`;
+}
+
+export function shipmentWhen(simHours: number, shipment: Shipment): string {
+  if (shipment.lateFee) return dueDayLabel(simHours, shipment.dueAt, shipment.toZip);
+  if (shipment.runStarted === false) {
+    const miles = planRoad(shipment.fromZip, shipment.toZip)?.miles ?? 80;
+    const days = runDaysFor(miles);
+    return days === 1 ? "1-day run, starts at pickup" : `${days}-day run, starts at pickup`;
+  }
+  return dueDayLabel(simHours, shipment.dueAt, shipment.toZip);
 }
 
 export function dueDayLabel(simHours: number, dueAt: number, zip: string): string {
@@ -1475,6 +1502,9 @@ export function quoteJob(
     arriveAt: 0,
     unloadAt: 0,
     dockClosed: false,
+    pickupArrive: 0,
+    pickupReady: 0,
+    pickupClosed: false,
     stageAt: null,
     ...extra,
   });
@@ -1498,12 +1528,15 @@ export function quoteJob(
   if (job.weight > cap.payload || job.cube > cap.cube) {
     return fail("The freight does not fit this truck.", { deadhead: dead.miles, loaded: loadedPlan.miles });
   }
-  const miles = dead.miles + loadedPlan.miles;
-  const clock = rollDuty(driveHoursFor(miles, spec.cruise || 60, driver.skill), driver.driveToday ?? 0, Boolean(driver.breakTaken));
-  const arriveAt = world.simHours + clock.elapsed;
-  const wait = dockWait(arriveAt, job.toZip, "dropKind" in job ? job.dropKind : undefined);
-  const unloadAt = arriveAt + wait;
+  const cruise = spec.cruise || 60;
+  const pickupKind = "pickupKind" in job ? job.pickupKind : undefined;
+  const dropKind = "dropKind" in job ? job.dropKind : undefined;
+  const pickup = tripEta(world.simHours, dead.miles, cruise, driver.skill, driver.driveToday ?? 0, Boolean(driver.breakTaken), fromZip, pickupKind, true);
+  const drop = tripEta(pickup.at, loadedPlan.miles, cruise, driver.skill, pickup.driven, pickup.broke, job.toZip, dropKind, true);
+  const arriveAt = drop.arrive;
+  const unloadAt = drop.at;
   const hours = unloadAt - world.simHours;
+  const miles = dead.miles + loadedPlan.miles;
   const mpg = spec.mpg || 7;
   const gallons = miles / mpg;
   const fuelCost = gallons * world.diesel;
@@ -1524,7 +1557,23 @@ export function quoteJob(
       stageAt = world.simHours + stage.elapsed;
     }
   }
-  return { ok: true, deadhead: dead.miles, loaded: loadedPlan.miles, hours, fuelCost, profit, warnings, points, arriveAt, unloadAt, dockClosed: wait > 0.05, stageAt };
+  return {
+    ok: true,
+    deadhead: dead.miles,
+    loaded: loadedPlan.miles,
+    hours,
+    fuelCost,
+    profit,
+    warnings,
+    points,
+    arriveAt,
+    unloadAt,
+    dockClosed: drop.wait > 0.05,
+    pickupArrive: pickup.arrive,
+    pickupReady: pickup.at,
+    pickupClosed: pickup.wait > 0.05,
+    stageAt,
+  };
 }
 
 const STAGE_DETOUR = 75;
@@ -1602,7 +1651,7 @@ export function insertPickup(home: string, order: { id: string; zip: string }[],
   return ids;
 }
 
-export type StageStop = { jobId: string; zip: string; miles: number; arriveAt: number };
+export type StageStop = { jobId: string; zip: string; miles: number; arriveAt: number; readyAt: number; dockClosed: boolean };
 
 export type StagePreview = {
   ok: boolean;
@@ -1664,25 +1713,32 @@ export function previewStage(world: World, vehicle: Vehicle, driver: Driver, job
   let broke = Boolean(driver.breakTaken);
   let miles = 0;
   const points: MapPoint[] = [];
-  const addLeg = (toZip: string) => {
+  const addLeg = (toZip: string, kind?: StopKind) => {
     const plan = planRoad(cursor, toZip);
-    if (!plan) return false;
+    if (!plan) return null;
     const leg = rollDuty(driveHoursFor(plan.miles, spec.cruise || 60, driver.skill), driven, broke);
     driven = leg.driven;
     broke = leg.broke;
     when += leg.elapsed;
+    const wait = kind ? dockWait(when, toZip, kind) : 0;
+    if (wait > 2) {
+      driven = 0;
+      broke = false;
+    }
+    const arriveAt = when;
+    when += wait;
     miles += plan.miles;
     if (points.length === 0) points.push(...plan.points);
     else points.push(...plan.points.slice(1));
     cursor = toZip;
-    return true;
+    return { miles: plan.miles, arriveAt, readyAt: when, dockClosed: wait > 0.05 };
   };
   if (trailer && trailer.zip !== vehicle.zip && !addLeg(trailer.zip)) return blank("No path to the trailer.");
   const stops: StageStop[] = [];
   for (const item of jobs) {
-    const before = miles;
-    if (!addLeg(item.fromZip)) return blank("No path for one of the pickups.");
-    stops.push({ jobId: item.id, zip: item.fromZip, miles: miles - before, arriveAt: when });
+    const leg = addLeg(item.fromZip, item.pickupKind);
+    if (!leg) return blank("No path for one of the pickups.");
+    stops.push({ jobId: item.id, zip: item.fromZip, miles: leg.miles, arriveAt: leg.arriveAt, readyAt: leg.readyAt, dockClosed: leg.dockClosed });
   }
   if (!addLeg(home.zip)) return blank("No path back to the warehouse.");
   const fuelCost = (miles / (spec.mpg || 7)) * world.diesel;
@@ -1948,13 +2004,14 @@ export function acceptJob(
       cargoValue: item.cargoValue,
       pay: item.pay,
       lateFee: item.lateFee,
-      dueAt: item.postedAt + item.dueInHours,
+      dueAt: item.lateFee ? item.postedAt + item.dueInHours : 0,
       deposit,
       status: "booked",
       vehicleId: vehicle.id,
       lateNoted: false,
       pickupKind: item.pickupKind,
       dropKind: item.dropKind,
+      runStarted: item.lateFee ? undefined : false,
     };
     made.push(shipment);
     company.shipments.push(shipment);
@@ -1996,8 +2053,8 @@ export function acceptJob(
     log(
       world,
       made.length === 1
-        ? `The truck will bring it to ${labelPlace(home.zip)} instead of the customer. The due day still runs.`
-        : `The truck will pick up ${made.length} loads and bring them to ${labelPlace(home.zip)}. The due days still run.`,
+        ? `The truck will bring it to ${labelPlace(home.zip)} instead of the customer. A run starts at pickup. An appointment does not move.`
+        : `The truck will pick up ${made.length} loads and bring them to ${labelPlace(home.zip)}. A run starts at pickup. An appointment does not move.`,
       "info",
     );
   }
@@ -2370,23 +2427,31 @@ export function resumeStored(world: World, shipmentId: string, vehicleId: string
 }
 
 function finishDelivery(world: World, company: Company, shipment: Shipment, vehicle: Vehicle) {
-  const lateHours = world.simHours - shipment.dueAt;
+  if (shipment.runStarted === false) openRun(world, shipment);
+  const lateHours = shipment.dueAt > 0 ? world.simHours - shipment.dueAt : 0;
   let payout = shipment.pay - shipment.deposit;
   let lateCut = 0;
   let lateDays = 0;
   const late = lateHours > 0.05;
+  const early =
+    shipment.lateFee &&
+    !late &&
+    localDay(world.simHours, shipment.toZip).key < localDay(shipment.dueAt, shipment.toZip).key;
   let rep = 2;
   if (late) {
+    rep = shipment.lateFee ? -6 : -4;
     if (!shipment.lateNoted) {
-      bumpRep(company, -6);
+      bumpRep(company, rep);
       shipment.lateNoted = true;
     }
-    rep = -6;
     if (shipment.lateFee) {
       lateDays = Math.max(1, Math.ceil(lateHours / 24));
       lateCut = Math.min(payout, shipment.pay * 0.2 * lateDays);
       payout -= lateCut;
     }
+  } else if (early) {
+    rep = -2;
+    bumpRep(company, -2);
   } else {
     bumpRep(company, 2);
   }
@@ -2408,10 +2473,14 @@ function finishDelivery(world: World, company: Company, shipment: Shipment, vehi
   const where = labelPlace(shipment.toZip);
   notify(
     world,
-    late
-      ? `Delivered late in ${where}.${lateCut > 0 ? ` Late fee ${money(lateCut)}.` : ""} ${payout > 0 ? `${money(payout)} reached the bank.` : "Nothing left of the balance."}`
-      : `Delivered in ${where}. ${money(payout)} reached the bank.`,
-    late || payout <= 0 ? "bad" : "good",
+    early
+      ? `Delivered early in ${where}. The appointment was ${localDay(shipment.dueAt, shipment.toZip).short}. Reputation drops a little.`
+      : late && shipment.lateFee
+        ? `Delivered late in ${where}.${lateCut > 0 ? ` Late fee ${money(lateCut)}.` : ""} ${payout > 0 ? `${money(payout)} reached the bank.` : "Nothing left of the balance."}`
+        : late
+          ? `Delivered past the run time in ${where}. Reputation drops. ${payout > 0 ? `${money(payout)} reached the bank.` : "Nothing left of the balance."}`
+          : `Delivered in ${where}. ${money(payout)} reached the bank.`,
+    late || early || payout <= 0 ? "bad" : "good",
   );
   const miles = vehicle.routeMiles > 1 ? vehicle.routeMiles : (planRoad(shipment.fromZip, shipment.toZip)?.miles ?? 0);
   noteDelivery(world, company, {
@@ -2543,6 +2612,13 @@ function dollars(text: string): number | null {
   return Number(match[1].replaceAll(",", ""));
 }
 
+function openRun(world: World, shipment: Shipment) {
+  if (shipment.lateFee || shipment.runStarted !== false) return;
+  const miles = planRoad(shipment.fromZip, shipment.toZip)?.miles ?? 80;
+  shipment.runStarted = true;
+  shipment.dueAt = world.simHours + runDaysFor(miles) * 24;
+}
+
 function arrive(world: World, company: Company, vehicle: Vehicle) {
   const leg = vehicle.legs.shift();
   if (!leg) {
@@ -2634,7 +2710,10 @@ function arrive(world: World, company: Company, vehicle: Vehicle) {
   }
   if (leg.kind === "pickup") {
     const shipment = leg.shipmentId ? company.shipments.find((item) => item.id === leg.shipmentId) : undefined;
-    if (shipment) shipment.status = "rolling";
+    if (shipment) {
+      shipment.status = "rolling";
+      openRun(world, shipment);
+    }
     notify(world, `Pickup finished in ${labelPlace(leg.toZip)}.`, "good");
   }
   if (vehicle.legs.length === 0) {
@@ -2650,7 +2729,10 @@ function moveVehicle(world: World, company: Company, vehicle: Vehicle, dt: numbe
     vehicle.status = "enroute";
     for (const shipment of company.shipments) {
       const onIt = shipment.id === vehicle.shipmentId || vehicle.legs.some((leg) => leg.shipmentId === shipment.id);
-      if (onIt && shipment.status === "booked") shipment.status = "rolling";
+      if (onIt && shipment.status === "booked") {
+        shipment.status = "rolling";
+        openRun(world, shipment);
+      }
     }
   }
   if (vehicle.status !== "enroute" && vehicle.status !== "inbound") return;

@@ -2,13 +2,13 @@ import { useState } from "react";
 import { labelPlace } from "@/game/geo";
 import {
   driversForVehicle,
-  dueDayLabel,
   hoursUntilMorning,
   isCommitted,
   isTractor,
   KIND_INFO,
   money,
   previewLoop,
+  shipmentWhen,
   storedUse,
   trailersFor,
   type Shipment,
@@ -17,6 +17,7 @@ import { useDesk } from "@/game/store";
 import { Button } from "@/components/ui/button";
 import { Field, Select } from "@/components/ui/input";
 import { cubes, dockLine, Notice, Panel, pounds, stamp, useWorld } from "@/components/desk/bits";
+import { DeliveryMap } from "@/components/desk/map-board";
 
 export function Dispatch() {
   const { world, company } = useWorld();
@@ -29,6 +30,7 @@ export function Dispatch() {
   const [order, setOrder] = useState<string[]>([]);
   const [dawn, setDawn] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const [mapOn, setMapOn] = useState(false);
   if (!company) return null;
   const yard = company.warehouses.find((item) => item.id === yardId) ?? company.warehouses[0];
   if (!yard) return null;
@@ -182,7 +184,30 @@ export function Dispatch() {
       </Panel>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Panel title="On the floor" kicker="Waiting">
+        <Panel
+          title="On the floor"
+          kicker="Waiting"
+          extra={
+            floor.length > 0 ? (
+              <Button variant="quiet" onClick={() => setMapOn((value) => !value)}>
+                {mapOn ? "Hide map" : "View map"}
+              </Button>
+            ) : null
+          }
+        >
+          {mapOn && floor.length > 0 ? (
+            <div className="mb-4">
+              <DeliveryMap
+                homeZip={yard.zip}
+                pins={floor.map((shipment) => ({
+                  id: shipment.id,
+                  zip: shipment.toZip,
+                  title: labelPlace(shipment.toZip),
+                  detail: `${pounds(shipment.weight)} · ${shipmentWhen(world.simHours, shipment)}`,
+                }))}
+              />
+            </div>
+          ) : null}
           {floor.filter((shipment) => !order.includes(shipment.id)).length === 0 ? (
             <p className="text-sm text-ink/70">
               Nothing waiting. Divert a rolling truck here, or book a shorter load and bring it to this building. Then load several of them on one truck.
@@ -196,7 +221,7 @@ export function Dispatch() {
                     <div>
                       <p className="font-medium">{labelPlace(shipment.toZip)}</p>
                       <p className="text-sm text-ink/60">
-                        {pounds(shipment.weight)} · {cubes(shipment.cube)} · {dueDayLabel(world.simHours, shipment.dueAt, shipment.toZip)} · {money(Math.max(0, shipment.pay - shipment.deposit))} still owed
+                        {pounds(shipment.weight)} · {cubes(shipment.cube)} · {shipmentWhen(world.simHours, shipment)} · {money(Math.max(0, shipment.pay - shipment.deposit))} still owed
                         {shipment.fragile ? " · fragile" : ""}
                       </p>
                     </div>
@@ -224,7 +249,7 @@ export function Dispatch() {
                         <p className="font-medium">{labelPlace(shipment.toZip)}</p>
                         <p className="text-sm text-ink/60">
                           {stop ? `${Math.round(stop.miles).toLocaleString("en-US")} mi from the previous stop · ` : ""}
-                          {dueDayLabel(world.simHours, shipment.dueAt, shipment.toZip)}
+                          {shipmentWhen(world.simHours, shipment)}
                           {stop?.late ? " · misses that day" : ""}
                         </p>
                         {stop ? <p className={`text-sm ${stop.dockClosed ? "text-rust" : "text-pine"}`}>{dockLine(stop.rollup, stop.arriveAt, stop.zip, stop.dockClosed)}</p> : null}

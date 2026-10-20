@@ -229,6 +229,65 @@ export function MapBoard({ route }: { route: MapPoint[] | null }) {
   );
 }
 
+export function DeliveryMap({ homeZip, pins }: { homeZip: string; pins: { id: string; zip: string; title: string; detail: string }[] }) {
+  const [hot, setHot] = useState<string | null>(null);
+  const groups = new Map<string, { id: string; zip: string; title: string; detail: string }[]>();
+  for (const pin of pins) {
+    const list = groups.get(pin.zip) ?? [];
+    list.push(pin);
+    groups.set(pin.zip, list);
+  }
+  const active = hot ? groups.get(hot) : undefined;
+  const home = lookupZip(homeZip);
+  const homePoint = home ? project(home.lat, home.lon) : null;
+
+  return (
+    <figure className="overflow-hidden rounded-lg border border-ink/10 bg-sheet">
+      <svg
+        viewBox="-28 -18 1056 656"
+        role="img"
+        aria-label="Delivery locations for freight on this warehouse floor."
+        className="h-auto w-full touch-manipulation"
+        style={{ aspectRatio: `${MAP.width} / ${MAP.height}` }}
+        onPointerDown={() => setHot(null)}
+      >
+        <rect x={-28} y={-18} width={1056} height={656} className="fill-sheet" />
+        <path d={HIGHWAY} className="fill-none stroke-ink/25" strokeWidth={1.15} />
+        {homePoint ? <rect x={homePoint[0] - 5} y={homePoint[1] - 5} width={10} height={10} className="fill-pine" /> : null}
+        {[...groups.entries()].map(([zip, list]) => {
+          const place = lookupZip(zip);
+          if (!place) return null;
+          const [x, y] = project(place.lat, place.lon);
+          const on = hot === zip;
+          return (
+            <g
+              key={zip}
+              className="cursor-pointer"
+              onPointerEnter={() => setHot(zip)}
+              onPointerLeave={() => setHot((value) => (value === zip ? null : value))}
+              onPointerDown={(event) => {
+                event.stopPropagation();
+                setHot(zip);
+              }}
+            >
+              <circle cx={x} cy={y} r={16} className="fill-transparent" />
+              <circle cx={x} cy={y} r={on ? 8 : 5} className="fill-rust" />
+              {list.length > 1 ? (
+                <text x={x + 10} y={y + 4} className="fill-ink" fontSize={12}>
+                  {list.length}
+                </text>
+              ) : null}
+            </g>
+          );
+        })}
+      </svg>
+      <figcaption className="border-t border-ink/10 px-3 py-2 text-sm text-ink/70">
+        {active ? active.map((pin) => `${pin.title}. ${pin.detail}`).join("  ·  ") : "Point at a delivery. On a phone, tap it. The green square is this warehouse."}
+      </figcaption>
+    </figure>
+  );
+}
+
 function MapNote({ hot }: { hot: string | null }) {
   const { world, company } = useWorld();
   if (!hot) return <p className="border-t border-ink/10 px-3 py-2 text-sm text-ink/55">Point at a truck, a city, or a warehouse. On a phone, tap it.</p>;

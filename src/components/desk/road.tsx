@@ -101,7 +101,7 @@ function TripCard({ trip, diesel, simHours, company }: { trip: TripRead; diesel:
         <ul className="mt-2 space-y-1 text-sm text-ink/60">
           {trip.dues.map((due) => (
             <li key={`${due.toZip}-${due.dueAt}`}>
-              {labelPlace(due.toZip)} · {dueDayLabel(simHours, due.dueAt, due.toZip)}
+              {labelPlace(due.toZip)} · {due.dueAt > 0 ? dueDayLabel(simHours, due.dueAt, due.toZip) : "Run starts at pickup"}
             </li>
           ))}
         </ul>

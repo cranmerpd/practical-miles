@@ -1,5 +1,5 @@
 import { labelPlace } from "@/game/geo";
-import { dueDayLabel, KIND_INFO, localDay, money, type LogLine, type Rival } from "@/game/sim";
+import { KIND_INFO, localDay, money, shipmentWhen, type LogLine, type Rival } from "@/game/sim";
 import { Panel, useWorld } from "@/components/desk/bits";
 import { nextPayday, readTrip, resale, type TripRead } from "@/components/desk/trip";
 
@@ -94,7 +94,7 @@ export function Finance() {
                     {labelPlace(shipment.toZip)}
                   </p>
                   <p className="text-ink/70">
-                    {where} · balance {money(balance)} · {dueDayLabel(world.simHours, shipment.dueAt, shipment.toZip)}
+                    {where} · balance {money(balance)} · {shipmentWhen(world.simHours, shipment)}
                     {shipment.lateFee ? " · late fee on the contract" : ""}
                   </p>
                 </li>
@@ -102,7 +102,7 @@ export function Finance() {
             })}
           </ul>
         )}
-        {stored.length > 0 ? <p className="mt-3 text-sm text-ink/60">{stored.length} of those are on a warehouse floor. The due day is still running.</p> : null}
+        {stored.length > 0 ? <p className="mt-3 text-sm text-ink/60">{stored.length} of those are on a warehouse floor. A run keeps going while it sits. An appointment does not move.</p> : null}
       </Panel>
 
       <Panel title="Cash journal">

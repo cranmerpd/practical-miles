@@ -127,7 +127,7 @@ function Owned({ vehicle }: { vehicle: Vehicle }) {
           ) : (
             <p>No customer is paying for this move. Fuel still to burn is about {money(trip.burn)}.</p>
           )}
-          {trip.dueAt != null ? <p className="text-ink/70">{dueDayLabel(world.simHours, trip.dueAt, dest)}.</p> : null}
+          {trip.dueAt != null && trip.dueAt > 0 ? <p className="text-ink/70">{dueDayLabel(world.simHours, trip.dueAt, dest)}.</p> : trip.dueAt === 0 ? <p className="text-ink/70">The run starts at pickup.</p> : null}
         </div>
       ) : (
         <p className="text-sm text-ink/60">{atYard ? "Parked at your warehouse." : `Parked in ${labelPlace(vehicle.zip)}.`}</p>

@@ -3,15 +3,16 @@ import { Link } from "@tanstack/react-router";
 import { havMiles, labelPlace, lookupZip, type MapPoint } from "@/game/geo";
 import {
   driversForVehicle,
-  dueDayLabel,
   insertPickup,
   isCommitted,
   isTractor,
   KIND_INFO,
   money,
+  offerWhen,
   pickupChoices,
   previewStage,
   quoteJob,
+  shipmentWhen,
   SIM_PER_REAL_HOUR,
   trailersFor,
   type Company,
@@ -22,7 +23,7 @@ import {
 import { useDesk } from "@/game/store";
 import { Button } from "@/components/ui/button";
 import { Field, Select } from "@/components/ui/input";
-import { cubes, dockLine, hoursLeft, Notice, Panel, pounds, stamp, useWorld } from "@/components/desk/bits";
+import { cubes, hoursLeft, Notice, Panel, pounds, stamp, useWorld } from "@/components/desk/bits";
 
 type SortKey = "pay" | "miles" | "due" | "weight" | "rate";
 
@@ -199,7 +200,7 @@ export function Loads({ onRoute }: { onRoute: (points: MapPoint[] | null) => voi
                       <span>${(job.pay / Math.max(1, job.miles)).toFixed(2)}/mi</span>
                       <span>{pounds(job.weight)}</span>
                       <span>{cubes(job.cube)}</span>
-                      <span>{dueDayLabel(world.simHours, job.postedAt + job.dueInHours, job.toZip)}</span>
+                      <span>{offerWhen(job.lateFee, job.postedAt + job.dueInHours, world.simHours, job.toZip, job.miles)}</span>
                     </span>
                     <span className="mt-1 flex flex-wrap gap-x-3 text-sm text-ink/55">
                       <span>Pickup {windowWords(job.pickupKind)}</span>
@@ -225,6 +226,13 @@ function windowWords(kind: MarketJob["pickupKind"]): string {
   if (kind === "commercial") return "commercial 8–5";
   if (kind === "residential") return "house 8–8";
   return "8–8";
+}
+
+function stopWindowLine(title: string, arrive: number, ready: number, zip: string, closed: boolean, kind: MarketJob["pickupKind"]): string {
+  const hours = kind === "commercial" ? "8am–5pm" : "8am–8pm";
+  const place = labelPlace(zip);
+  if (!closed) return `${title} in ${place} at ${stamp(arrive, zip)}. That dock is open (${hours}).`;
+  return `${title} in ${place} at ${stamp(arrive, zip)}. That dock is closed (${hours}). It can load at ${stamp(ready, zip)}.`;
 }
 
 function Filter({ on, set, label }: { on: boolean; set: (value: boolean) => void; label: string }) {
@@ -272,13 +280,13 @@ function Books() {
                 {labelPlace(shipment.toZip)}
               </p>
               <p className="text-sm text-ink/70">
-                {money(shipment.pay)} total · {money(shipment.deposit)} already paid · {dueDayLabel(world.simHours, shipment.dueAt, shipment.toZip)}
+                {money(shipment.pay)} total · {money(shipment.deposit)} already paid · {shipmentWhen(world.simHours, shipment)}
                 {shipment.fragile ? " · fragile" : ""}
                 {shipment.lateFee ? " · late fee if you miss it" : ""}
               </p>
               <p className="text-sm">
                 {shipment.status === "stored" && yard
-                  ? `Sitting in ${labelPlace(yard.zip)}. Load it with other freight on the warehouse desk. The due day is still running.`
+                  ? `Sitting in ${labelPlace(yard.zip)}. Load it with other freight on the warehouse desk. ${shipment.lateFee ? "The appointment is still running." : shipment.runStarted === false ? "The run has not started." : "The run is still going."}`
                   : shipment.status === "booked"
                     ? seconds > 120
                       ? "Booked. The truck is waiting to leave."
@@ -481,7 +489,12 @@ function Booking({ job, onRoute, onClose }: { job: MarketJob; onRoute: (points: 
               <dd className={`tabular-nums font-medium ${quote.profit < 0 ? "text-rust" : "text-pine"}`}>{money(quote.profit)}</dd>
             </div>
           </dl>
-          <p className={`text-sm ${quote.dockClosed ? "text-rust" : "text-pine"}`}>{dockLine(quote.arriveAt, quote.unloadAt, job.toZip, quote.dockClosed)}</p>
+          <p className={`text-sm ${quote.pickupClosed ? "text-rust" : "text-pine"}`}>
+            {stopWindowLine("Pickup", quote.pickupArrive, quote.pickupReady, job.fromZip, quote.pickupClosed, job.pickupKind)}
+          </p>
+          <p className={`text-sm ${quote.dockClosed ? "text-rust" : "text-pine"}`}>
+            {stopWindowLine("Delivery", quote.arriveAt, quote.unloadAt, job.toZip, quote.dockClosed, job.dropKind)}
+          </p>
           {quote.warnings.map((warning) => (
             <p key={warning} className="text-sm text-rust">{warning}</p>
           ))}
@@ -536,7 +549,10 @@ function Booking({ job, onRoute, onClose }: { job: MarketJob; onRoute: (points: 
                         <span className="text-ink/50"> to </span>
                         {labelPlace(choice.toZip)}
                         <span className="mt-1 block text-ink/70">
-                          {pounds(choice.weight)} · {cubes(choice.cube)} · +{choice.extraMiles} mi · {dueDayLabel(world.simHours, choice.dueAt, choice.toZip)}
+                          {pounds(choice.weight)} · {cubes(choice.cube)} · +{choice.extraMiles} mi · {(() => {
+                            const other = world.jobs.find((row) => row.id === choice.jobId);
+                            return offerWhen(Boolean(other?.lateFee), choice.dueAt, world.simHours, choice.toZip, other?.miles ?? 0);
+                          })()}
                           {!on && !room ? " · no room" : ""}
                         </span>
                       </span>
@@ -563,9 +579,16 @@ function Booking({ job, onRoute, onClose }: { job: MarketJob; onRoute: (points: 
             </ol>
           ) : null}
           {stage.ok ? (
-            <p className="text-sm text-ink/70">
-              {pickupOrder.length} pickup{pickupOrder.length === 1 ? "" : "s"}. Home about {stamp(stage.homeAt, vehicle.zip)}. Fuel about {money(stage.fuelCost)}. Truck {pounds(stage.weight)} of {pounds(stage.payload)}. The due day does not move.
-            </p>
+            <div className="space-y-1 text-sm text-ink/70">
+              {stage.stops.map((stop) => (
+                <p key={stop.jobId} className={stop.dockClosed ? "text-rust" : ""}>
+                  {stopWindowLine("Pickup", stop.arriveAt, stop.readyAt, stop.zip, stop.dockClosed, world.jobs.find((row) => row.id === stop.jobId)?.pickupKind ?? job.pickupKind)}
+                </p>
+              ))}
+              <p>
+                {pickupOrder.length} pickup{pickupOrder.length === 1 ? "" : "s"}. Home about {stamp(stage.homeAt, vehicle.zip)}. Fuel about {money(stage.fuelCost)}. Truck {pounds(stage.weight)} of {pounds(stage.payload)}. A run starts at pickup. An appointment does not move.
+              </p>
+            </div>
           ) : (
             <p className="text-sm text-rust">{stage.reason}</p>
           )}

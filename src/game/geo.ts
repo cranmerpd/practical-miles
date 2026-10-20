@@ -133,6 +133,17 @@ export type RoadPlan = {
   points: MapPoint[];
 };
 
+export function compass(fromZip: string, toZip: string): string {
+  const from = lookupZip(fromZip);
+  const to = lookupZip(toZip);
+  if (!from || !to) return "";
+  const p = Math.PI / 180;
+  const y = Math.sin((to.lon - from.lon) * p) * Math.cos(to.lat * p);
+  const x = Math.cos(from.lat * p) * Math.sin(to.lat * p) - Math.sin(from.lat * p) * Math.cos(to.lat * p) * Math.cos((to.lon - from.lon) * p);
+  const names = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+  return names[Math.round((((Math.atan2(y, x) * 180) / Math.PI) + 360) % 360 / 45) % 8];
+}
+
 export function planRoad(fromZip: string, toZip: string): RoadPlan | null {
   const from = lookupZip(fromZip);
   const to = lookupZip(toZip);
@@ -140,29 +151,26 @@ export function planRoad(fromZip: string, toZip: string): RoadPlan | null {
   if (from.zip === to.zip) {
     return { miles: 8, highwayMiles: 0, localMiles: 8, points: [from, to] };
   }
+  const direct = Math.round(Math.max(8, havMiles(from.lat, from.lon, to.lat, to.lon) * 1.2));
+  const asDirect = (): RoadPlan => ({ miles: direct, highwayMiles: 0, localMiles: direct, points: [from, to] });
   const startLocal = localMiles(havMiles(from.lat, from.lon, hubs[from.hub].lat, hubs[from.hub].lon));
   const endLocal = localMiles(havMiles(to.lat, to.lon, hubs[to.hub].lat, hubs[to.hub].lon));
+  let routed: RoadPlan | null = null;
   if (from.hub === to.hub) {
     const miles = Math.round(startLocal + endLocal);
-    return {
-      miles,
-      highwayMiles: 0,
-      localMiles: miles,
-      points: [from, hubs[from.hub], to],
-    };
+    routed = { miles, highwayMiles: 0, localMiles: miles, points: [from, hubs[from.hub], to] };
+  } else {
+    const highway = shortest(from.hub, to.hub);
+    if (highway) {
+      const points: MapPoint[] = [from];
+      for (const id of highway.path) points.push(hubs[id]);
+      points.push(to);
+      const miles = Math.round(startLocal + highway.miles + endLocal);
+      routed = { miles, highwayMiles: highway.miles, localMiles: Math.round(startLocal + endLocal), points };
+    }
   }
-  const highway = shortest(from.hub, to.hub);
-  if (!highway) return null;
-  const points: MapPoint[] = [from];
-  for (const id of highway.path) points.push(hubs[id]);
-  points.push(to);
-  const miles = Math.round(startLocal + highway.miles + endLocal);
-  return {
-    miles,
-    highwayMiles: highway.miles,
-    localMiles: Math.round(startLocal + endLocal),
-    points,
-  };
+  if (!routed || direct + 15 < routed.miles) return asDirect();
+  return routed;
 }
 
 function shortest(start: number, goal: number): { miles: number; path: number[] } | null {

@@ -230,9 +230,17 @@ export function MapBoard({ route, fit = false, compact = false }: { route: MapPo
   );
 }
 
-export function DeliveryMap({ homeZip, pins }: { homeZip: string; pins: { id: string; zip: string; title: string; detail: string }[] }) {
+export function DeliveryMap({
+  homeZip,
+  pins,
+  route,
+}: {
+  homeZip: string;
+  pins: { id: string; zip: string; title: string; detail: string; stop?: number }[];
+  route?: MapPoint[];
+}) {
   const [hot, setHot] = useState<string | null>(null);
-  const groups = new Map<string, { id: string; zip: string; title: string; detail: string }[]>();
+  const groups = new Map<string, { id: string; zip: string; title: string; detail: string; stop?: number }[]>();
   for (const pin of pins) {
     const list = groups.get(pin.zip) ?? [];
     list.push(pin);
@@ -241,25 +249,49 @@ export function DeliveryMap({ homeZip, pins }: { homeZip: string; pins: { id: st
   const active = hot ? groups.get(hot) : undefined;
   const home = lookupZip(homeZip);
   const homePoint = home ? project(home.lat, home.lon) : null;
+  const places = [home, ...pins.map((pin) => lookupZip(pin.zip))].filter((place): place is NonNullable<typeof home> => Boolean(place));
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const place of places) {
+    const [x, y] = project(place.lat, place.lon);
+    minX = Math.min(minX, x);
+    minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x);
+    maxY = Math.max(maxY, y);
+  }
+  if (!Number.isFinite(minX)) {
+    minX = -28;
+    minY = -18;
+    maxX = 1028;
+    maxY = 638;
+  }
+  const pad = 48;
+  const width = Math.max(120, maxX - minX + pad * 2);
+  const height = Math.max(80, maxY - minY + pad * 2);
+  const drawn = route && route.length > 1 ? line(route) : "";
 
   return (
     <figure className="overflow-hidden rounded-lg border border-ink/10 bg-sheet">
       <svg
-        viewBox="-28 -18 1056 656"
+        viewBox={`${(minX - pad).toFixed(1)} ${(minY - pad).toFixed(1)} ${width.toFixed(1)} ${height.toFixed(1)}`}
         role="img"
         aria-label="Delivery locations for freight on this warehouse floor."
-        className="h-auto w-full touch-manipulation"
-        style={{ aspectRatio: `${MAP.width} / ${MAP.height}` }}
+        className="h-72 w-full touch-manipulation"
+        preserveAspectRatio="xMidYMid meet"
         onPointerDown={() => setHot(null)}
       >
-        <rect x={-28} y={-18} width={1056} height={656} className="fill-sheet" />
+        <rect x={minX - pad} y={minY - pad} width={width} height={height} className="fill-sheet" />
         <path d={HIGHWAY} className="fill-none stroke-ink/25" strokeWidth={1.15} />
+        {drawn ? <path d={drawn} className="fill-none stroke-pine" strokeWidth={2.4} /> : null}
         {homePoint ? <rect x={homePoint[0] - 5} y={homePoint[1] - 5} width={10} height={10} className="fill-pine" /> : null}
         {[...groups.entries()].map(([zip, list]) => {
           const place = lookupZip(zip);
           if (!place) return null;
           const [x, y] = project(place.lat, place.lon);
           const on = hot === zip;
+          const stop = list.find((pin) => pin.stop)?.stop;
           return (
             <g
               key={zip}
@@ -272,8 +304,12 @@ export function DeliveryMap({ homeZip, pins }: { homeZip: string; pins: { id: st
               }}
             >
               <circle cx={x} cy={y} r={16} className="fill-transparent" />
-              <circle cx={x} cy={y} r={on ? 8 : 5} className="fill-rust" />
-              {list.length > 1 ? (
+              <circle cx={x} cy={y} r={on ? 9 : 6} className={stop ? "fill-ink" : "fill-rust"} />
+              {stop ? (
+                <text x={x} y={y + 4} textAnchor="middle" className="fill-paper" fontSize={11}>
+                  {stop}
+                </text>
+              ) : list.length > 1 ? (
                 <text x={x + 10} y={y + 4} className="fill-ink" fontSize={12}>
                   {list.length}
                 </text>
@@ -283,7 +319,9 @@ export function DeliveryMap({ homeZip, pins }: { homeZip: string; pins: { id: st
         })}
       </svg>
       <figcaption className="border-t border-ink/10 px-3 py-2 text-sm text-ink/70">
-        {active ? active.map((pin) => `${pin.title}. ${pin.detail}`).join("  ·  ") : "Point at a delivery. On a phone, tap it. The green square is this warehouse."}
+        {active
+          ? active.map((pin) => `${pin.stop ? `${pin.stop}. ` : ""}${pin.title}. ${pin.detail}`).join("  ·  ")
+          : "The map is zoomed to this warehouse and these deliveries. Numbers are the order on the truck. Rust dots are still on the floor."}
       </figcaption>
     </figure>
   );

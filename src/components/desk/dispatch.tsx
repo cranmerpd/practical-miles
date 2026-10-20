@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { labelPlace } from "@/game/geo";
+import { compass, labelPlace, planRoad } from "@/game/geo";
 import {
   driversForVehicle,
   hoursUntilMorning,
@@ -30,7 +30,6 @@ export function Dispatch() {
   const [order, setOrder] = useState<string[]>([]);
   const [dawn, setDawn] = useState(false);
   const [note, setNote] = useState<string | null>(null);
-  const [mapOn, setMapOn] = useState(false);
   if (!company) return null;
   const yard = company.warehouses.find((item) => item.id === yardId) ?? company.warehouses[0];
   if (!yard) return null;
@@ -45,7 +44,7 @@ export function Dispatch() {
   const floor = company.shipments
     .filter((shipment) => shipment.status === "stored" && shipment.warehouseId === yard.id)
     .slice()
-    .sort((a, b) => a.dueAt - b.dueAt);
+    .sort((a, b) => (planRoad(yard.zip, a.toZip)?.miles ?? 1e9) - (planRoad(yard.zip, b.toZip)?.miles ?? 1e9) || a.dueAt - b.dueAt);
   const chosen = order.map((id) => floor.find((shipment) => shipment.id === id) ?? company.shipments.find((shipment) => shipment.id === id)).filter((item): item is Shipment => Boolean(item));
   const departAt = dawn ? world.simHours + hoursUntilMorning(world.simHours, yard.zip) : world.simHours;
   const preview =
@@ -91,6 +90,66 @@ export function Dispatch() {
     const [item] = next.splice(index, 1);
     next.splice(target, 0, item);
     setOrder(next);
+  }
+
+  function loopMiles(ids: string[]): number {
+    let cursor = yard.zip;
+    let total = 0;
+    for (const id of ids) {
+      const shipment = floor.find((item) => item.id === id);
+      if (!shipment) return 1e12;
+      const leg = planRoad(cursor, shipment.toZip);
+      if (!leg) return 1e12;
+      total += leg.miles;
+      cursor = shipment.toZip;
+    }
+    return total + (planRoad(cursor, yard.zip)?.miles ?? 1e12);
+  }
+
+  function bestOrder(ids: string[]): string[] {
+    if (ids.length <= 1) return ids;
+    if (ids.length > 6) {
+      const left = new Set(ids);
+      const next: string[] = [];
+      let cursor = yard.zip;
+      while (left.size) {
+        let best: string | null = null;
+        let bestMiles = Infinity;
+        for (const id of left) {
+          const shipment = floor.find((item) => item.id === id);
+          const miles = shipment ? (planRoad(cursor, shipment.toZip)?.miles ?? 1e9) : 1e9;
+          if (miles < bestMiles) {
+            best = id;
+            bestMiles = miles;
+          }
+        }
+        if (!best) break;
+        left.delete(best);
+        next.push(best);
+        cursor = floor.find((item) => item.id === best)?.toZip ?? cursor;
+      }
+      return next;
+    }
+    let best = ids.slice();
+    let bestMiles = Infinity;
+    const walk = (used: string[]) => {
+      if (used.length === ids.length) {
+        const miles = loopMiles(used);
+        if (miles < bestMiles) {
+          bestMiles = miles;
+          best = used.slice();
+        }
+        return;
+      }
+      for (const id of ids) {
+        if (used.includes(id)) continue;
+        used.push(id);
+        walk(used);
+        used.pop();
+      }
+    };
+    walk([]);
+    return best;
   }
 
   return (
@@ -184,27 +243,23 @@ export function Dispatch() {
       </Panel>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Panel
-          title="On the floor"
-          kicker="Waiting"
-          extra={
-            floor.length > 0 ? (
-              <Button variant="quiet" onClick={() => setMapOn((value) => !value)}>
-                {mapOn ? "Hide map" : "View map"}
-              </Button>
-            ) : null
-          }
-        >
-          {mapOn && floor.length > 0 ? (
+        <Panel title="On the floor" kicker="Closest first">
+          {floor.length > 0 ? (
             <div className="mb-4">
               <DeliveryMap
                 homeZip={yard.zip}
-                pins={floor.map((shipment) => ({
-                  id: shipment.id,
-                  zip: shipment.toZip,
-                  title: labelPlace(shipment.toZip),
-                  detail: `${pounds(shipment.weight)} · ${shipmentWhen(world.simHours, shipment)}`,
-                }))}
+                route={preview?.ok ? preview.points : undefined}
+                pins={floor.map((shipment) => {
+                  const place = order.indexOf(shipment.id);
+                  const road = planRoad(yard.zip, shipment.toZip);
+                  return {
+                    id: shipment.id,
+                    zip: shipment.toZip,
+                    stop: place >= 0 ? place + 1 : undefined,
+                    title: labelPlace(shipment.toZip),
+                    detail: `${road ? `${road.miles.toLocaleString("en-US")} mi ${compass(yard.zip, shipment.toZip)}` : ""} · ${pounds(shipment.weight)} · ${shipmentWhen(world.simHours, shipment)}`,
+                  };
+                })}
               />
             </div>
           ) : null}
@@ -216,31 +271,54 @@ export function Dispatch() {
             <ul className="space-y-3">
               {floor
                 .filter((shipment) => !order.includes(shipment.id))
-                .map((shipment) => (
-                  <li key={shipment.id} className="flex items-start justify-between gap-3 border-b border-ink/10 pb-3 last:border-0">
-                    <div>
-                      <p className="font-medium">{labelPlace(shipment.toZip)}</p>
-                      <p className="text-sm text-ink/60">
-                        {pounds(shipment.weight)} · {cubes(shipment.cube)} · {shipmentWhen(world.simHours, shipment)} · {money(Math.max(0, shipment.pay - shipment.deposit))} still owed
-                        {shipment.fragile ? " · fragile" : ""}
-                      </p>
-                    </div>
-                    <Button variant="quiet" onClick={() => add(shipment.id)}>
-                      Load
-                    </Button>
-                  </li>
-                ))}
+                .map((shipment) => {
+                  const road = planRoad(yard.zip, shipment.toZip);
+                  const added =
+                    vehicle && driver && (!isTractor(vehicle.kind) || trailer)
+                      ? previewLoop(world, vehicle, driver, [...order, shipment.id], departAt, trailer)
+                      : null;
+                  const extra = added?.ok ? Math.round(added.miles - (preview?.ok ? preview.miles : 0)) : null;
+                  return (
+                    <li key={shipment.id} className="flex items-start justify-between gap-3 border-b border-ink/10 pb-3 last:border-0">
+                      <div>
+                        <p className="font-medium">{labelPlace(shipment.toZip)}</p>
+                        <p className="text-sm text-ink/60">
+                          {road ? `${road.miles.toLocaleString("en-US")} mi ${compass(yard.zip, shipment.toZip)} of this warehouse · ` : ""}
+                          {pounds(shipment.weight)} · {cubes(shipment.cube)} · {shipmentWhen(world.simHours, shipment)} · {money(Math.max(0, shipment.pay - shipment.deposit))} still owed
+                          {shipment.fragile ? " · fragile" : ""}
+                          {extra != null ? ` · adds ${extra.toLocaleString("en-US")} mi` : added && !added.ok ? " · does not fit" : ""}
+                        </p>
+                      </div>
+                      <Button variant="quiet" onClick={() => add(shipment.id)}>
+                        Load
+                      </Button>
+                    </li>
+                  );
+                })}
             </ul>
           )}
         </Panel>
 
-        <Panel title="On the truck" kicker="Manifest">
+        <Panel
+          title="On the truck"
+          kicker="Manifest"
+          extra={
+            order.length > 1 ? (
+              <Button variant="quiet" onClick={() => setOrder(bestOrder(order))}>
+                Shortest loop
+              </Button>
+            ) : null
+          }
+        >
           {chosen.length === 0 ? (
             <p className="text-sm text-ink/70">The truck is empty. Load stops in the order you want them delivered.</p>
           ) : (
+            <>
             <ol className="space-y-3">
               {chosen.map((shipment, index) => {
                 const stop = preview?.stops.find((item) => item.shipmentId === shipment.id);
+                const previous = index === 0 ? yard.zip : chosen[index - 1].toZip;
+                const from = index === 0 ? "the warehouse" : labelPlace(previous).split(",")[0];
                 return (
                   <li key={shipment.id} className="border-b border-ink/10 pb-3 last:border-0">
                     <div className="flex items-start gap-3">
@@ -248,8 +326,8 @@ export function Dispatch() {
                       <div className="min-w-0 flex-1">
                         <p className="font-medium">{labelPlace(shipment.toZip)}</p>
                         <p className="text-sm text-ink/60">
-                          {stop ? `${Math.round(stop.miles).toLocaleString("en-US")} mi from the previous stop · ` : ""}
-                          {shipmentWhen(world.simHours, shipment)}
+                          {stop ? `${Math.round(stop.miles).toLocaleString("en-US")} mi from ${from} · ` : ""}
+                          {compass(previous, shipment.toZip)} · {shipmentWhen(world.simHours, shipment)}
                           {stop?.late ? " · misses that day" : ""}
                         </p>
                         {stop ? <p className={`text-sm ${stop.dockClosed ? "text-rust" : "text-pine"}`}>{dockLine(stop.rollup, stop.arriveAt, stop.zip, stop.dockClosed)}</p> : null}
@@ -276,6 +354,14 @@ export function Dispatch() {
                 );
               })}
             </ol>
+            {preview?.ok ? (
+              <p className="mt-3 text-sm text-ink/70">
+                {Math.round(preview.miles - preview.stops.reduce((sum, stop) => sum + stop.miles, 0)).toLocaleString("en-US")} mi from {labelPlace(chosen[chosen.length - 1].toZip).split(",")[0]} back to the warehouse.
+                {" "}
+                {Math.round(preview.miles).toLocaleString("en-US")} mi for the whole loop.
+              </p>
+            ) : null}
+            </>
           )}
         </Panel>
       </div>

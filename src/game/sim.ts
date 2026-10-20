@@ -58,6 +58,7 @@ export type Driver = {
   driveToday: number;
   breakTaken: boolean;
   restUntil: number | null;
+  offSince?: number | null;
 };
 
 export type Warehouse = {
@@ -382,6 +383,24 @@ export function rollDuty(driveHours: number, driven = 0, broke = false): { elaps
   return { elapsed, driven, broke };
 }
 
+function afterOffDuty(driven: number, broke: boolean, offHours: number): { driven: number; broke: boolean } {
+  if (offHours >= 10) return { driven: 0, broke: false };
+  if (offHours >= 0.5 && driven > 0.05) return { driven, broke: true };
+  return { driven, broke };
+}
+
+function clockIn(driver: Driver, vehicle: Vehicle, simHours: number) {
+  const off = driver.offSince != null ? Math.max(0, simHours - driver.offSince) : 0;
+  const settled = afterOffDuty(driver.driveToday ?? 0, Boolean(driver.breakTaken), off);
+  driver.driveToday = settled.driven;
+  driver.breakTaken = settled.broke;
+  driver.offSince = null;
+  if (driver.restUntil != null && simHours >= driver.restUntil) driver.restUntil = null;
+  vehicle.driveToday = driver.driveToday;
+  vehicle.breakTaken = driver.breakTaken;
+  vehicle.restUntil = driver.restUntil;
+}
+
 function skillSpeed(skill: number): number {
   return 0.88 + (skill / 100) * 0.2;
 }
@@ -487,7 +506,7 @@ export function tripEta(simHours: number, miles: number, cruise: number, skill: 
   const clock = rollDuty(driveHoursFor(Math.max(0, miles), cruise || 60, skill), driven, broke);
   const arrive = simHours + (miles <= 0.05 ? 0 : clock.elapsed);
   const wait = dock ? dockWait(arrive, zip, kind) : 0;
-  return { at: arrive + wait, arrive, wait, driven: wait > 2 ? 0 : clock.driven, broke: wait > 2 ? false : clock.broke };
+  return { at: arrive + wait, arrive, wait, ...afterOffDuty(clock.driven, clock.broke, wait) };
 }
 
 export function runDaysFor(miles: number): number {
@@ -1574,7 +1593,9 @@ export function quoteJob(
   const cruise = spec.cruise || 60;
   const pickupKind = "pickupKind" in job ? job.pickupKind : undefined;
   const dropKind = "dropKind" in job ? job.dropKind : undefined;
-  const pickup = tripEta(world.simHours, dead.miles, cruise, driver.skill, driver.driveToday ?? 0, Boolean(driver.breakTaken), fromZip, pickupKind, true);
+  const off = !driver.vehicleId && driver.offSince != null ? Math.max(0, world.simHours - driver.offSince) : 0;
+  const settled = afterOffDuty(driver.driveToday ?? 0, Boolean(driver.breakTaken), off);
+  const pickup = tripEta(world.simHours, dead.miles, cruise, driver.skill, settled.driven, settled.broke, fromZip, pickupKind, true);
   const drop = tripEta(pickup.at, loadedPlan.miles, cruise, driver.skill, pickup.driven, pickup.broke, job.toZip, dropKind, true);
   const arriveAt = drop.arrive;
   const unloadAt = drop.at;
@@ -1596,7 +1617,7 @@ export function quoteJob(
     const back = planRoad(fromZip, home.zip);
     if (back) {
       const stageMiles = dead.miles + back.miles;
-      const stage = rollDuty(driveHoursFor(stageMiles, spec.cruise || 60, driver.skill), driver.driveToday ?? 0, Boolean(driver.breakTaken));
+      const stage = rollDuty(driveHoursFor(stageMiles, spec.cruise || 60, driver.skill), settled.driven, settled.broke);
       stageAt = world.simHours + stage.elapsed;
     }
   }
@@ -1754,6 +1775,11 @@ export function previewStage(world: World, vehicle: Vehicle, driver: Driver, job
   let when = world.simHours;
   let driven = driver.driveToday ?? 0;
   let broke = Boolean(driver.breakTaken);
+  if (!driver.vehicleId && driver.offSince != null) {
+    const rested = afterOffDuty(driven, broke, Math.max(0, world.simHours - driver.offSince));
+    driven = rested.driven;
+    broke = rested.broke;
+  }
   let miles = 0;
   const points: MapPoint[] = [];
   const addLeg = (toZip: string, kind?: StopKind) => {
@@ -1764,10 +1790,9 @@ export function previewStage(world: World, vehicle: Vehicle, driver: Driver, job
     broke = leg.broke;
     when += leg.elapsed;
     const wait = kind ? dockWait(when, toZip, kind) : 0;
-    if (wait > 2) {
-      driven = 0;
-      broke = false;
-    }
+    const rested = afterOffDuty(driven, broke, wait);
+    driven = rested.driven;
+    broke = rested.broke;
     const arriveAt = when;
     when += wait;
     miles += plan.miles;
@@ -1886,10 +1911,10 @@ export function previewLoop(
   let miles = 0;
   let driven = driver.driveToday ?? 0;
   let broke = Boolean(driver.breakTaken);
-  if (departAt - world.simHours > 2) {
-    driven = 0;
-    broke = false;
-  }
+  const off = driver.offSince != null ? departAt - driver.offSince : departAt - world.simHours;
+  const rested = afterOffDuty(driven, broke, Math.max(0, off));
+  driven = rested.driven;
+  broke = rested.broke;
   const stops: LoopStop[] = [];
   const points: MapPoint[] = [];
   for (const shipment of list) {
@@ -1901,10 +1926,9 @@ export function previewLoop(
     const rollup = when + leg.elapsed;
     const wait = dockWait(rollup, shipment.toZip, shipment.dropKind);
     const arriveAt = rollup + wait;
-    if (wait > 2) {
-      driven = 0;
-      broke = false;
-    }
+    const restedStop = afterOffDuty(driven, broke, wait);
+    driven = restedStop.driven;
+    broke = restedStop.broke;
     stops.push({
       shipmentId: shipment.id,
       zip: shipment.toZip,
@@ -1975,6 +1999,7 @@ export function dispatchLoop(
   driver.vehicleId = vehicle.id;
   driver.warehouseId = null;
   vehicle.driverId = driver.id;
+  clockIn(driver, vehicle, world.simHours);
   if (trailer) {
     vehicle.coupledTrailerId = trailer.id;
     trailer.coupledTrailerId = vehicle.id;
@@ -2066,6 +2091,7 @@ export function acceptJob(
   driver.vehicleId = vehicle.id;
   driver.warehouseId = null;
   vehicle.driverId = driver.id;
+  clockIn(driver, vehicle, world.simHours);
   vehicle.shipmentId = made[0]?.id ?? null;
   const legs: Leg[] = [];
   if (trailer && trailer.zip !== vehicle.zip) {
@@ -2152,12 +2178,12 @@ export function cancelShipment(world: World, shipmentId: string): string | null 
     postedAt: world.simHours,
     expiresAt: world.simHours + 24,
   });
-  releaseCrew(company, vehicle, true);
+  releaseCrew(company, vehicle, true, world.simHours);
   company.shipments = company.shipments.filter((item) => item.id !== shipmentId);
   return null;
 }
 
-function releaseCrew(company: Company, vehicle: Vehicle, toPool: boolean) {
+function releaseCrew(company: Company, vehicle: Vehicle, toPool: boolean, simHours: number) {
   const yard = warehouseAt(company, vehicle.zip);
   if (vehicle.driverId) {
     const driver = company.drivers.find((item) => item.id === vehicle.driverId);
@@ -2166,6 +2192,8 @@ function releaseCrew(company: Company, vehicle: Vehicle, toPool: boolean) {
         driver.vehicleId = null;
         driver.warehouseId = yard.id;
         vehicle.driverId = null;
+        driver.offSince = simHours;
+        if (driver.restUntil != null && simHours >= driver.restUntil) driver.restUntil = null;
       }
     }
   }
@@ -2211,10 +2239,17 @@ export function sendOnBreak(world: World, driverId: string): string | null {
   if (driver.vehicleId) return "They are still on a truck.";
   if (!driver.warehouseId) return "They are not at a warehouse.";
   if (onBreak(driver, world.simHours)) return "Already on a break.";
-  driver.driveToday = 0;
-  driver.breakTaken = false;
-  driver.restUntil = world.simHours + 10;
-  notify(world, `${driver.name} is on a 10-hour break at the warehouse. Off the board until it ends.`, "info");
+  if (driver.offSince == null) driver.offSince = world.simHours;
+  const left = Math.max(0, 10 - (world.simHours - driver.offSince));
+  if (left <= 0.05) {
+    driver.driveToday = 0;
+    driver.breakTaken = false;
+    driver.restUntil = null;
+    notify(world, `${driver.name} already has 10 hours off. Eleven driving hours are open.`, "good");
+    return null;
+  }
+  driver.restUntil = world.simHours + left;
+  notify(world, `${driver.name} is off duty for another ${left.toFixed(1)} hours. Off the board until it ends.`, "info");
   return null;
 }
 
@@ -2388,6 +2423,7 @@ export function reposition(world: World, vehicleId: string, toZip: string, drive
   driver.vehicleId = vehicle.id;
   driver.warehouseId = null;
   vehicle.driverId = driver.id;
+  clockIn(driver, vehicle, world.simHours);
   vehicle.legs = [{ kind: "reposition", toZip: place.zip }];
   vehicle.departAt = world.simHours + 0.02;
   armLeg(vehicle);
@@ -2457,6 +2493,7 @@ export function resumeStored(world: World, shipmentId: string, vehicleId: string
   driver.vehicleId = vehicle.id;
   driver.warehouseId = null;
   vehicle.driverId = driver.id;
+  clockIn(driver, vehicle, world.simHours);
   vehicle.shipmentId = shipment.id;
   if (trailer) {
     vehicle.coupledTrailerId = trailer.id;
@@ -2710,7 +2747,7 @@ function arrive(world: World, company: Company, vehicle: Vehicle) {
       vehicle.shipmentId = null;
       vehicle.legs = [];
       vehicle.status = "idle";
-      releaseCrew(company, vehicle, true);
+      releaseCrew(company, vehicle, true, world.simHours);
       log(
         world,
         stored === 1
@@ -2746,7 +2783,7 @@ function arrive(world: World, company: Company, vehicle: Vehicle) {
   if (leg.kind === "reposition") {
     vehicle.status = "idle";
     vehicle.legs = [];
-    if (warehouseAt(company, vehicle.zip)) releaseCrew(company, vehicle, true);
+    if (warehouseAt(company, vehicle.zip)) releaseCrew(company, vehicle, true, world.simHours);
     log(world, `Empty move ended in ${labelPlace(vehicle.zip)}.`, "info");
     notify(world, `Truck is back in ${labelPlace(vehicle.zip)}.`, "good");
     return;
@@ -2782,6 +2819,10 @@ function moveVehicle(world: World, company: Company, vehicle: Vehicle, dt: numbe
   const spec = KIND_INFO[vehicle.kind];
   const driver = vehicle.driverId ? company.drivers.find((item) => item.id === vehicle.driverId) : undefined;
   if (vehicle.restUntil != null && world.simHours < vehicle.restUntil) return;
+  if (vehicle.restUntil != null) {
+    vehicle.restUntil = null;
+    if (driver?.restUntil != null && world.simHours >= driver.restUntil) driver.restUntil = null;
+  }
   const mph = vehicle.status === "inbound" ? 50 : (spec.cruise || 55) * skillSpeed(driver?.skill ?? 50);
   let hours = dt;
   let driveToday = driver?.driveToday ?? vehicle.driveToday;
@@ -2804,7 +2845,7 @@ function moveVehicle(world: World, company: Company, vehicle: Vehicle, dt: numbe
   vehicle.traveled += step;
   if (vehicle.status !== "inbound") {
     driveToday += usedHours;
-    writeDuty(driver, vehicle, driveToday, breakTaken, driver?.restUntil ?? vehicle.restUntil);
+    writeDuty(driver, vehicle, driveToday, breakTaken, null);
     const gallons = step / (spec.mpg || 7);
     vehicle.fuel -= gallons;
     if (spec.tank > 0 && vehicle.fuel < spec.tank * 0.2) {
@@ -2826,13 +2867,29 @@ function moveVehicle(world: World, company: Company, vehicle: Vehicle, dt: numbe
           notify(world, `The ${what} in ${labelPlace(leg.toZip)} is closed. It is open 8am to ${close} local.`, "info");
         }
         vehicle.restUntil = world.simHours + wait;
-        if (wait > 2) writeDuty(driver, vehicle, 0, false, vehicle.restUntil);
-        else writeDuty(driver, vehicle, driver?.driveToday ?? vehicle.driveToday, driver?.breakTaken ?? vehicle.breakTaken, vehicle.restUntil);
+        const rested = afterOffDuty(driver?.driveToday ?? vehicle.driveToday, Boolean(driver?.breakTaken ?? vehicle.breakTaken), wait);
+        writeDuty(driver, vehicle, rested.driven, rested.broke, world.simHours + wait);
         return;
       }
     }
     arrive(world, company, vehicle);
   }
+}
+
+function settleParked(world: World, driver: Driver) {
+  if (driver.vehicleId || !driver.warehouseId) return;
+  if (driver.offSince == null) driver.offSince = world.simHours;
+  const off = world.simHours - driver.offSince;
+  const ended = driver.restUntil != null && world.simHours >= driver.restUntil ? driver.restUntil : null;
+  if (ended != null) driver.restUntil = null;
+  if (off >= 10 - 1e-6 && ((driver.driveToday ?? 0) > 0.05 || driver.breakTaken)) {
+    driver.driveToday = 0;
+    driver.breakTaken = false;
+    notify(world, `${driver.name} has been off duty 10 hours. Eleven driving hours are open.`, "good");
+    return;
+  }
+  if (ended != null && world.simHours - ended <= 0.5) notify(world, `${driver.name} finished the break and can be dispatched.`, "good");
+  if (off >= 0.5 && !driver.breakTaken && (driver.driveToday ?? 0) > 0.05) driver.breakTaken = true;
 }
 
 function rivalAct(world: World) {
@@ -2843,7 +2900,7 @@ function rivalAct(world: World) {
 function headHome(world: World, company: Company, vehicle: Vehicle) {
   vehicle.status = "idle";
   if (vehicle.kind === "trailer53" || warehouseAt(company, vehicle.zip)) {
-    if (warehouseAt(company, vehicle.zip)) releaseCrew(company, vehicle, true);
+    if (warehouseAt(company, vehicle.zip)) releaseCrew(company, vehicle, true, world.simHours);
     return;
   }
   const home = company.warehouses.find((yard) => yard.zip === company.homeZip) ?? company.warehouses[0];
@@ -2895,6 +2952,7 @@ export function advance(world: World, dtHours: number) {
           moveVehicle(world, company, vehicle, step);
         }
       }
+      for (const driver of company.drivers) settleParked(world, driver);
       payroll(world, company);
       if (company.negativeSince != null && gameDate(world.simHours).getTime() >= closureDate(company.negativeSince).getTime()) {
         company.closed = true;
@@ -2912,13 +2970,6 @@ export function advance(world: World, dtHours: number) {
       refillBoard(world);
       refillListings(world);
       if (company) {
-        for (const driver of company.drivers) {
-          if (driver.vehicleId || driver.restUntil == null || world.simHours < driver.restUntil) continue;
-          driver.restUntil = null;
-          driver.breakTaken = false;
-          driver.driveToday = 0;
-          notify(world, `${driver.name} finished the break and can be dispatched.`, "good");
-        }
         for (const yard of company.warehouses) refillApplicants(world, yard);
         refillYards(world);
       }

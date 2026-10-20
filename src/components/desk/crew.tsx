@@ -85,13 +85,17 @@ function Stat({ label, value }: { label: string; value: string }) {
 }
 
 function availability(driver: Driver, simHours: number): { text: string; driven: number } {
-  const driven = driver.driveToday ?? 0;
+  const off = !driver.vehicleId && driver.offSince != null ? Math.max(0, simHours - driver.offSince) : 0;
+  const reset = off >= 10;
+  const driven = reset ? 0 : (driver.driveToday ?? 0);
+  const broke = reset ? false : off >= 0.5 && driven > 0.05 ? true : Boolean(driver.breakTaken);
   const left = Math.max(0, 11 - driven);
   const resting = driver.restUntil != null && simHours < driver.restUntil ? driver.restUntil - simHours : 0;
-  if (resting > 0.05 && driven < 0.05) return { text: `Break · ${hoursLeft(resting)} left`, driven: 0 };
-  if (resting > 0.05) return { text: `Break · ${hoursLeft(resting)} left · ${left.toFixed(1)}h after`, driven };
-  if (!driver.breakTaken && driven >= 8) return { text: `30-minute break due · ${left.toFixed(1)}h after`, driven };
-  if (!driver.breakTaken) return { text: `${left.toFixed(1)}h left · 30-minute break still owed`, driven };
+  if (resting > 0.05) return { text: `Off duty · ${hoursLeft(resting)} until dispatch · ${left.toFixed(1)}h driving after`, driven };
+  if (reset && !driver.vehicleId) return { text: "11 driving hours open", driven: 0 };
+  if (!driver.vehicleId && off > 0.05 && driven > 0.05) return { text: `${left.toFixed(1)}h left · off ${off.toFixed(1)}h · resets in ${(10 - off).toFixed(1)}h`, driven };
+  if (!broke && driven >= 8) return { text: `30-minute break due · ${left.toFixed(1)}h after`, driven };
+  if (!broke) return { text: `${left.toFixed(1)}h left · 30-minute break still owed`, driven };
   return { text: `${left.toFixed(1)}h left · 30-minute break done`, driven };
 }
 
@@ -105,6 +109,9 @@ function Roster({ driver, simHours }: { driver: Driver; simHours: number }) {
   const yard = company.warehouses.find((item) => item.id === driver.warehouseId);
   const ready = trucksTheyCanTake(company, driver);
   const clock = availability(driver, simHours);
+  const off = !driver.vehicleId && driver.offSince != null ? Math.max(0, simHours - driver.offSince) : 0;
+  const resetIn = Math.max(0, 10 - off);
+  const used = (driver.driveToday ?? 0) > 0.05 || Boolean(driver.breakTaken);
   return (
     <li className="space-y-2 border border-ink/15 p-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -114,15 +121,15 @@ function Roster({ driver, simHours }: { driver: Driver; simHours: number }) {
         </p>
         <p className="text-sm tabular-nums text-ink/60">{money(driver.wage)}/mo · skill {driver.skill}</p>
       </div>
-      <Track label="Driving today" value={clock.driven} max={11} display={`${clock.driven.toFixed(1)} / 11 h`} tone={clock.driven >= 8 ? "rust" : "ink"} />
+      <Track label="Driving clock" value={clock.driven} max={11} display={`${clock.driven.toFixed(1)} / 11 h`} tone={clock.driven >= 8 ? "rust" : "ink"} />
       <p className="text-sm text-ink/70">
         {clock.text}
         {truck ? ` · ${KIND_INFO[truck.kind].label}` : yard ? ` · ${labelPlace(yard.zip)}` : ""}
         {ready.length && !driver.vehicleId ? ` · ${ready.map((vehicle) => KIND_INFO[vehicle.kind].label).join(", ")}` : ""}
       </p>
-      {!driver.vehicleId && driver.warehouseId && !(driver.restUntil != null && simHours < driver.restUntil) ? (
+      {!driver.vehicleId && driver.warehouseId && !(driver.restUntil != null && simHours < driver.restUntil) && used && resetIn > 0.05 ? (
         <Button variant="quiet" onClick={() => setNote(sendBreak(driver.id))}>
-          10-hour break
+          Hold off duty · {resetIn.toFixed(1)}h
         </Button>
       ) : null}
       {driver.vehicleId || (truck && onTheRoad(truck)) ? null : (

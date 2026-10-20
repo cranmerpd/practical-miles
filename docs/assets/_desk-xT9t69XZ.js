@@ -1,0 +1,1 @@
+import{t as e}from"./desk-CsD-HGb8.js";var t=e;export{t as component};

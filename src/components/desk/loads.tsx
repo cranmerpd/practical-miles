@@ -24,6 +24,7 @@ import { useDesk } from "@/game/store";
 import { Button } from "@/components/ui/button";
 import { Field, Select } from "@/components/ui/input";
 import { cubes, hoursLeft, Notice, Panel, pounds, stamp, useWorld } from "@/components/desk/bits";
+import { MapBoard } from "@/components/desk/map-board";
 
 type SortKey = "pay" | "miles" | "due" | "weight" | "rate";
 
@@ -98,7 +99,7 @@ function dueLeft(job: MarketJob, simHours: number): number {
   return job.postedAt + job.dueInHours - simHours;
 }
 
-export function Loads({ onRoute }: { onRoute: (points: MapPoint[] | null) => void }) {
+export function Loads({ onRoute, route }: { onRoute: (points: MapPoint[] | null) => void; route: MapPoint[] | null }) {
   const { world, company } = useWorld();
   const holdJob = useDesk((s) => s.holdJob);
   const [haulOnly, setHaulOnly] = useState(false);
@@ -108,11 +109,6 @@ export function Loads({ onRoute }: { onRoute: (points: MapPoint[] | null) => voi
   const [roadOnly, setRoadOnly] = useState(false);
   const [sort, setSort] = useState<SortKey>("rate");
   const heldId = world.heldJobId;
-
-  useEffect(() => {
-    if (!heldId) return;
-    document.getElementById("booking-card")?.scrollIntoView({ block: "start" });
-  }, [heldId]);
 
   const rows = useMemo(() => {
     if (!company) return [];
@@ -140,43 +136,31 @@ export function Loads({ onRoute }: { onRoute: (points: MapPoint[] | null) => voi
   const held = world.jobs.find((job) => job.id === world.heldJobId) ?? null;
 
   return (
-    <div className="space-y-4">
-      {held ? (
-        <div id="booking-card" className="scroll-mt-36">
-          <Booking job={held} onRoute={onRoute} onClose={() => holdJob(null)} />
-        </div>
-      ) : null}
-      <Panel
-        title="Load board"
-        kicker="Open market"
-        extra={
-          <span className="text-sm text-ink/60">
-            {world.jobs.filter((job) => job.mode === "road").length} road · diesel ${world.diesel.toFixed(2)}/gal
-          </span>
-        }
-      >
-        <div className="mb-3 flex flex-wrap gap-2">
+    <div className={`grid gap-3 ${held ? "xl:h-[calc(100dvh-7.5rem)] xl:grid-cols-[minmax(0,1fr)_28rem]" : ""}`}>
+      <section className={`min-h-0 ${held ? "order-2 xl:order-1 xl:overflow-y-auto" : ""}`}>
+        <div className="mb-3 flex flex-wrap items-center gap-2">
           <Filter on={haulOnly} set={setHaulOnly} label="Can haul" />
           <Filter on={nearOnly} set={setNearOnly} label="Near my trucks" />
           <Filter on={fragileOnly} set={setFragileOnly} label="Fragile" />
           <Filter on={lateOnly} set={setLateOnly} label="Late fee" />
           <Filter on={roadOnly} set={setRoadOnly} label="Road only" />
-        </div>
-        <Field label="Sort">
-          <Select value={sort} onChange={(event) => setSort(event.target.value as SortKey)}>
-            <option value="pay">Pay</option>
+          <Select className="ml-auto w-44" value={sort} onChange={(event) => setSort(event.target.value as SortKey)} aria-label="Sort">
             <option value="rate">Pay for the miles</option>
+            <option value="pay">Pay</option>
             <option value="miles">Distance</option>
             <option value="due">Deadline</option>
             <option value="weight">Weight</option>
           </Select>
-        </Field>
+        </div>
+        <p className="mb-3 text-sm text-ink/60">
+          {rows.length} shown · {world.jobs.filter((job) => job.mode === "road").length} road · diesel ${world.diesel.toFixed(2)}/gal
+        </p>
         {world.jobs.length === 0 ? (
-          <p className="mt-3 text-sm text-ink/70">Loads are still posting.</p>
+          <p className="text-sm text-ink/70">Loads are still posting.</p>
         ) : rows.length === 0 ? (
-          <p className="mt-3 text-sm text-ink/70">Nothing matches these filters.</p>
+          <p className="text-sm text-ink/70">Nothing matches these filters.</p>
         ) : (
-          <ul className="mt-3 divide-y divide-ink/10">
+          <ul className={`grid items-start gap-3 sm:grid-cols-2 ${held ? "xl:grid-cols-2" : "xl:grid-cols-3"}`}>
             {rows.map((job) => {
               const fit = canHaul(company, job, world.simHours);
               const heldRow = job.id === world.heldJobId;
@@ -184,32 +168,31 @@ export function Loads({ onRoute }: { onRoute: (points: MapPoint[] | null) => voi
                 <li key={job.id}>
                   <button
                     type="button"
-                    className={`w-full py-3 text-left ${heldRow ? "bg-ink/[0.04]" : ""}`}
+                    className={`h-full w-full border p-3 text-left ${heldRow ? "border-pine bg-ink/10" : "border-ink/15"}`}
                     onClick={() => holdJob(heldRow ? null : job.id)}
                   >
-                    <span className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                    <span className="flex items-baseline justify-between gap-3">
                       <span className="font-medium">
                         {labelPlace(job.fromZip)}
                         <span className="text-ink/50"> to </span>
                         {labelPlace(job.toZip)}
                       </span>
-                      <span className="tabular-nums font-semibold">{money(job.pay)}</span>
+                      <span className="shrink-0 tabular-nums font-semibold">{money(job.pay)}</span>
                     </span>
                     <span className="mt-1 flex flex-wrap gap-x-3 text-sm tabular-nums text-ink/70">
                       <span>{job.miles.toLocaleString("en-US")} mi</span>
                       <span>${(job.pay / Math.max(1, job.miles)).toFixed(2)}/mi</span>
                       <span>{pounds(job.weight)}</span>
                       <span>{cubes(job.cube)}</span>
-                      <span>{offerWhen(job.lateFee, job.postedAt + job.dueInHours, world.simHours, job.toZip, job.miles)}</span>
                     </span>
                     <span className="mt-1 flex flex-wrap gap-x-3 text-sm text-ink/55">
+                      <span>{offerWhen(job.lateFee, job.postedAt + job.dueInHours, world.simHours, job.toZip, job.miles)}</span>
                       <span>Pickup {windowWords(job.pickupKind)}</span>
                       <span>Delivery {windowWords(job.dropKind)}</span>
                       <span className={fit.ok ? "text-pine" : ""}>{fit.label}</span>
                       {job.miles <= 180 && job.weight <= 3500 && job.cube <= 400 ? <span>Van</span> : null}
                       {job.fragile ? <span>Fragile</span> : null}
                       {job.lateFee ? <span>Late fee</span> : null}
-                      {heldRow ? <span className="text-rust">Open</span> : null}
                     </span>
                   </button>
                 </li>
@@ -217,7 +200,13 @@ export function Loads({ onRoute }: { onRoute: (points: MapPoint[] | null) => voi
             })}
           </ul>
         )}
-      </Panel>
+      </section>
+      {held ? (
+        <div className="order-1 min-h-0 space-y-3 xl:order-2 xl:overflow-y-auto">
+          {route && route.length > 1 ? <MapBoard route={route} compact /> : null}
+          <Booking job={held} onRoute={onRoute} onClose={() => holdJob(null)} />
+        </div>
+      ) : null}
     </div>
   );
 }
